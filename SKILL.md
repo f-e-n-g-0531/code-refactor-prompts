@@ -4,12 +4,12 @@ description: Compose high-quality, behavior-preserving code refactoring prompts.
 license: MIT
 metadata:
   author: f-e-n-g-0531
-  version: "1.4.0"
+  version: "1.5.0"
 ---
 
 # 代码重构优化提示词
 
-当用户要求重构/优化代码、索要重构提示词模板，或需要 AI 安全地重构、去坏味道、优化代码时，按本技能产出**可直接粘贴使用的结构化提示词**。默认中文输出；若用户指定语言/框架，把模板中 `{占位符}` 与测试命令填成对应的可用值。英文模板见 `references/template-en.md`；检查器支持中英文提示词（`--strict` 严格模式、`--skeleton` 补齐缺失段落）；主模板与英文模板本身也由 `audit_templates.py` 用同一检查器审计；仓库内 Python / Go / Rust / TypeScript / C# 样例均由 CI 实际执行（`verify_examples.py`），可直接照搬其验收标准写法。
+当用户要求重构/优化代码、索要重构提示词模板，或需要 AI 安全地重构、去坏味道、优化代码时，按本技能产出**可直接粘贴使用的结构化提示词**。默认中文输出；若用户指定语言/框架，把模板中 `{占位符}` 与测试命令填成对应的可用值。英文模板见 `references/template-en.md`；检查器支持中英文提示词（`--strict` 严格模式、`--skeleton` 补齐缺失段落）；主模板与英文模板本身也由 `audit_templates.py` 用同一检查器审计；仓库内 Python / Go / Rust / TypeScript / C# / SQL 六个样例均由 CI 实际执行（`verify_examples.py`），可直接照搬其验收标准写法；默认模板、英文模板与 13 个专项变体由 `audit_templates.py` 分级审计。
 
 ## 核心原则
 
@@ -116,4 +116,4 @@ metadata:
 
 ## 专项变体
 
-性能优化、代码坏味道、大文件/长函数拆分、安全加固、现代化升级、分语言定制（速查）、行为基线测试、守卫（Guard Clauses）、可测试性改造、模块化/解耦、SOLID 原则、设计模式应用、技术债/遗留系统，见 `references/specialized-prompts.md`；分语言完整版见 `references/language-specific.md`；端到端流程（评审驱动、遗留代码基线、多文件分批、迭代修复）见 `references/workflows.md`；英文主模板见 `references/template-en.md`；实战样例见 `examples/`；依据与出处见 `references/sources.md`。
+性能优化、代码坏味道、大文件/长函数拆分、安全加固、现代化升级、分语言定制（速查）、行为基线测试、守卫（Guard Clauses）、可测试性改造、模块化/解耦、SOLID 原则、设计模式应用、技术债/遗留系统，见 `references/specialized-prompts.md`；分语言完整版见 `references/language-specific.md`；端到端流程（评审驱动、遗留代码基线、多文件分批、迭代修复）见 `references/workflows.md`；英文主模板见 `references/template-en.md`；实战样例见 `examples/`；每个变体都带可验证的验收锚点（CI 分级审计）；依据与出处见 `references/sources.md`。

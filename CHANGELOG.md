@@ -2,6 +2,20 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.5.0] - 2026-10-18
+
+### Added
+
+- `examples/sql-legacy-report-equivalence.md`：可执行 SQL 样例——用固定数据集把遗留查询结果锁成 golden，再用 CTE + 独立聚合改写并逐行差分；验证只用 Python 标准库 `sqlite3`，零依赖。
+- 专项变体分级审计：`audit_templates.py` 新增第二级审计，主模板跑完整检查器，12 个变体检查「验收锚点」（守卫变体检查 `NO_CODE_PROVIDED` / `NO_REFACTORING_NEEDED`），并扫描反模式。
+- 5 个变体补齐显式验收锚点：代码坏味道、安全加固、模块化/解耦、SOLID、设计模式应用。
+
+### Changed
+
+- 校验脚本新增 README「可执行样例数量」一致性检查（中英文）。
+- CI / Release 的审计步骤覆盖专项变体；发布打包 dry-run 增加 SQL 样例断言。
+- SKILL.md、README、README.en.md 同步：6 个可执行样例、分级审计、变体验收锚点说明。
+
 ## [1.4.0] - 2026-10-18
 
 ### Added

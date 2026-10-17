@@ -7,7 +7,7 @@
 
 一个用于生成高质量、行为等价、可验收的 **代码重构提示词** 的可复用技能（DSH Skill）。
 
-本技能把「信息密度决定质量上限」的方法论沉淀为可直接加载、可直接粘贴使用的结构化提示词体系：三档策略（A 模糊 / B 结构化 / C 上下文＋验收标准）、八段式骨架、13 个专项变体、分语言定制参考、端到端工作流，并以「行为基线测试 + 可验证验收标准」和 Guard Clauses 作为两道质量防线。样例代码不是纸面内容：Python / Go / Rust / TypeScript / C# 五个样例由 CI 真实执行验证；默认模板与英文模板也由同一检查器做「模板自审计」。
+本技能把「信息密度决定质量上限」的方法论沉淀为可直接加载、可直接粘贴使用的结构化提示词体系：三档策略（A 模糊 / B 结构化 / C 上下文＋验收标准）、八段式骨架、13 个专项变体、分语言定制参考、端到端工作流，并以「行为基线测试 + 可验证验收标准」和 Guard Clauses 作为两道质量防线。样例代码不是纸面内容：6 个可执行样例（Python / Go / Rust / TypeScript / C# / SQL）由 CI 真实执行验证；默认模板、英文模板与 13 个专项变体也由同一检查器做分级审计。
 
 ## 结构
 
@@ -31,7 +31,8 @@ code-refactor-prompts/
 │   ├── go-legacy-order-total.md                   可执行样例（Go 行为基线 + 差分）
 │   ├── rust-legacy-order-total.md                 可执行样例（Rust 行为基线 + 差分）
 │   ├── typescript-legacy-characterisation.md      可执行样例（TS 运行时等价的类型化重构）
-│   └── csharp-legacy-order-total.md               可执行样例（C# 无测试框架下的退出码断言）
+│   ├── csharp-legacy-order-total.md               可执行样例（C# 无测试框架下的退出码断言）
+│   └── sql-legacy-report-equivalence.md           可执行样例（SQL 结果集 golden + 差分）
 ├── scripts/
 │   ├── check_prompt.py           生成提示词自检（八段 / 可验证 / 语言匹配 / 反模式 / 双语）
 │   └── fixtures/                 正例 / 反例（CI 自测用）
@@ -41,7 +42,7 @@ code-refactor-prompts/
     │   └── release.yml           推送 v* 标签自动发布
     └── scripts/
         ├── validate_skill.py     结构与文案校验
-        ├── audit_templates.py    用检查器审计技能自带的主模板
+        ├── audit_templates.py    分级审计：主模板跑完整检查器，专项变体查验收锚点
         ├── verify_examples.py    从样例 md 提取代码并真实执行
         └── release_notes.py      从 CHANGELOG 生成 Release Notes
 ```
@@ -55,8 +56,8 @@ code-refactor-prompts/
 - **端到端工作流**：评审驱动重构、遗留代码先锁行为基线、多文件分批验收、AI 输出后的迭代修复。
 - **分语言定制**：Java / Python / JS-TS / React / Go / Rust / C# / C++ / SQL / Kotlin / Swift / Ruby / PHP 的惯用手法、测试命令与红线。
 - **可自检（双语）**：`scripts/check_prompt.py` 检查八段、可验证验收与守卫；自动识别中英文段落与提示词语言，校验验收命令是否匹配（如 Go 必须写 `go test`），拦截「顺便改测试」「整体重写」「空泛指标」等中英文反模式；支持 `--strict`（警告即失败）与 `--skeleton`（打印缺失段落骨架）。
-- **样例可执行**：5 个跨语言样例由 CI 用 `verify_examples.py` 真实执行（`go test` / `python -m unittest` / `cargo test` / `node --test` / `dotnet run`），文档与代码不会脱节。
-- **模板自审计**：`audit_templates.py` 用同一检查器审计 SKILL.md 默认模板与英文模板，模板和检查器不会各说各话。
+- **样例可执行**：6 个跨语言 / 跨领域样例由 CI 用 `verify_examples.py` 真实执行（`go test` / `python -m unittest` / `cargo test` / `node --test` / `dotnet run` / SQLite 结果集对比），文档与代码不会脱节。
+- **分级审计**：`audit_templates.py` 用同一检查器审计 SKILL.md 默认模板与英文模板（完整八段检查）；13 个专项变体则检查「验收锚点」与反模式——主模板和变体的质量都不靠自觉。
 - **英文模板**：`references/template-en.md` 提供八段式英文主模板，便于英文代码库与评审流程直接使用。
 - **防误用**：给出「何时降档 / 不适用」「常见错误提示词（反例 → 修正）」与输出格式约定。
 
@@ -86,7 +87,7 @@ cat my-prompt.txt | python3 scripts/check_prompt.py -
 
 ## CI 与发布
 
-- **CI**（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：push / PR 时校验技能结构、frontmatter、版本一致性、引用完整性、相对链接与禁止的过程性文案；用同一检查器审计自带模板；自测提示词检查器；用 Node 24 实际执行全部可执行样例；并 dry-run 一次发布打包。
+- **CI**（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：push / PR 时校验技能结构、frontmatter、版本一致性、引用完整性、相对链接与禁止的过程性文案；对模板与专项变体做分级审计；自测提示词检查器；用 Node 24 实际执行全部可执行样例；并 dry-run 一次发布打包。
 - **Release**（[.github/workflows/release.yml](.github/workflows/release.yml)）：推送 `v*` 标签后自动校验、审计模板、实跑样例、打包（`zip` / `tar.gz` / `SHA256SUMS`）并创建 GitHub Release。
 
 发布流程：

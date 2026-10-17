@@ -32,6 +32,7 @@ REQUIRED_FILES = [
     "examples/rust-legacy-order-total.md",
     "examples/typescript-legacy-characterisation.md",
     "examples/csharp-legacy-order-total.md",
+    "examples/sql-legacy-report-equivalence.md",
     "scripts/check_prompt.py",
     "scripts/fixtures/good-prompt.txt",
     "scripts/fixtures/good-go-prompt.txt",
@@ -135,6 +136,19 @@ def check_counts() -> None:
     claimed = re.search(r"出处与依据（(\d+) 条）", readme)
     if claimed and int(claimed.group(1)) != sources:
         errors.append(f"README 声称 {claimed.group(1)} 条出处，实际 {sources} 条")
+
+    executable = sum(
+        1
+        for path in (ROOT / "examples").glob("*.md")
+        if "<!-- verify:run" in path.read_text(encoding="utf-8")
+    )
+    claimed = re.search(r"(\d+)\s*个可执行样例", readme)
+    if claimed and int(claimed.group(1)) != executable:
+        errors.append(f"README 声称 {claimed.group(1)} 个可执行样例，实际 {executable} 个")
+    readme_en = read("README.en.md")
+    claimed = re.search(r"(\d+)\s*runnable examples", readme_en)
+    if claimed and int(claimed.group(1)) != executable:
+        errors.append(f"README.en 声称 {claimed.group(1)} 个可执行样例，实际 {executable} 个")
 
 
 def iter_markdown():

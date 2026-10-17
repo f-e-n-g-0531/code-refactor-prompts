@@ -39,7 +39,7 @@ jobs:
       - name: Validate skill
         run: python3 .github/scripts/validate_skill.py
 
-      - name: Audit embedded prompt templates
+      - name: Audit master templates and specialised variants
         run: python3 .github/scripts/audit_templates.py
 
       - name: Set up Node.js for the TypeScript example

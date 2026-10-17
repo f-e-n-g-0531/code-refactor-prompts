@@ -24,7 +24,7 @@ jobs:
       - name: Validate structure, frontmatter, links and copy
         run: python3 .github/scripts/validate_skill.py
 
-      - name: Audit embedded prompt templates
+      - name: Audit master templates and specialised variants
         run: python3 .github/scripts/audit_templates.py
 
       - name: Self-test prompt checker
@@ -79,6 +79,7 @@ jobs:
               "code-refactor-prompts/examples/rust-legacy-order-total.md",
               "code-refactor-prompts/examples/typescript-legacy-characterisation.md",
               "code-refactor-prompts/examples/csharp-legacy-order-total.md",
+              "code-refactor-prompts/examples/sql-legacy-report-equivalence.md",
               "code-refactor-prompts/scripts/check_prompt.py",
           ]
           for entry in required:
