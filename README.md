@@ -9,6 +9,10 @@
 ```text
 code-refactor-prompts/
 ├── SKILL.md                      主技能（核心原则、八段骨架、三档策略、默认模板）
+├── README.md                     项目说明、安装与使用
+├── CHANGELOG.md                  版本记录（遵循 SemVer）
+├── LICENSE                       MIT 许可
+├── .gitignore
 ├── references/
 │   ├── specialized-prompts.md    13 个专项变体提示词
 │   ├── language-specific.md      分语言定制要点（Java/Python/JS-TS/React/Go/Rust/C#/C++/SQL/Ruby/PHP）
