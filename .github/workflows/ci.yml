@@ -24,12 +24,21 @@ jobs:
       - name: Validate structure, frontmatter, links and copy
         run: python3 .github/scripts/validate_skill.py
 
+      - name: Self-test prompt checker
+        run: |
+          python3 scripts/check_prompt.py scripts/fixtures/good-prompt.txt
+          if python3 scripts/check_prompt.py scripts/fixtures/bad-prompt.txt; then
+            echo "::error::check_prompt.py should reject the bad fixture"
+            exit 1
+          fi
+          echo "prompt checker self-test OK"
+
       - name: Dry-run release packaging
         run: |
           set -euo pipefail
           mkdir -p dist
           git archive --format=zip --prefix=code-refactor-prompts/ -o dist/skill.zip HEAD \
-            SKILL.md README.md CHANGELOG.md LICENSE .gitignore references examples
+            SKILL.md README.md README.en.md CHANGELOG.md LICENSE .gitignore references examples scripts
           python3 - <<'PY'
           import zipfile
           names = zipfile.ZipFile("dist/skill.zip").namelist()

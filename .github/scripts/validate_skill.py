@@ -17,6 +17,7 @@ SKILL_NAME = "code-refactor-prompts"
 REQUIRED_FILES = [
     "SKILL.md",
     "README.md",
+    "README.en.md",
     "CHANGELOG.md",
     "LICENSE",
     ".gitignore",
@@ -26,6 +27,10 @@ REQUIRED_FILES = [
     "references/workflows.md",
     "examples/java-order-calculator-strategy-c.md",
     "examples/python-legacy-characterisation.md",
+    "examples/go-legacy-order-total.md",
+    "scripts/check_prompt.py",
+    "scripts/fixtures/good-prompt.txt",
+    "scripts/fixtures/bad-prompt.txt",
 ]
 
 # Process / placeholder copy that must never leak into a released skill.

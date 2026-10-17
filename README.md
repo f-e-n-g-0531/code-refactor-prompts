@@ -3,6 +3,8 @@
 [![CI](https://github.com/f-e-n-g-0531/code-refactor-prompts/actions/workflows/ci.yml/badge.svg)](https://github.com/f-e-n-g-0531/code-refactor-prompts/actions/workflows/ci.yml)
 [![Release](https://github.com/f-e-n-g-0531/code-refactor-prompts/actions/workflows/release.yml/badge.svg)](https://github.com/f-e-n-g-0531/code-refactor-prompts/releases)
 
+中文 | [English](README.en.md)
+
 一个用于生成高质量、行为等价、可验收的 **代码重构提示词** 的可复用技能（DSH Skill）。
 
 本技能把「信息密度决定质量上限」的方法论沉淀为可直接加载、可直接粘贴使用的结构化提示词体系：三档策略（A 模糊 / B 结构化 / C 上下文＋验收标准）、八段式骨架、13 个专项变体、分语言定制参考、端到端工作流，并以「行为基线测试 + 可验证验收标准」和 Guard Clauses 作为两道质量防线。
@@ -12,7 +14,8 @@
 ```text
 code-refactor-prompts/
 ├── SKILL.md                      主技能（核心原则、八段骨架、三档策略、默认模板）
-├── README.md                     项目说明、安装与使用
+├── README.md                     中文说明
+├── README.en.md                  英文说明
 ├── CHANGELOG.md                  版本记录（遵循 SemVer）
 ├── LICENSE                       MIT 许可
 ├── .gitignore
@@ -23,7 +26,11 @@ code-refactor-prompts/
 │   └── sources.md                出处与依据（19 条）
 ├── examples/
 │   ├── java-order-calculator-strategy-c.md   实战样例（策略 C 全景）
-│   └── python-legacy-characterisation.md     实战样例（遗留代码行为基线）
+│   ├── python-legacy-characterisation.md     实战样例（遗留 Python 行为基线）
+│   └── go-legacy-order-total.md              实战样例（遗留 Go 行为基线 + 差分测试）
+├── scripts/
+│   ├── check_prompt.py           生成提示词的结构自检
+│   └── fixtures/                 正例 / 反例（CI 自测用）
 └── .github/
     ├── workflows/
     │   ├── ci.yml                结构校验（push / PR）
@@ -41,6 +48,7 @@ code-refactor-prompts/
 - **Guard Clauses 防废话**：无代码输出 NO_CODE_PROVIDED，无问题输出 NO_REFACTORING_NEEDED。
 - **端到端工作流**：评审驱动重构、遗留代码先锁行为基线、多文件分批验收、AI 输出后的迭代修复。
 - **分语言定制**：Java / Python / JS-TS / React / Go / Rust / C# / C++ / SQL / Kotlin / Swift / Ruby / PHP 的惯用手法、测试命令与红线。
+- **可自检**：`scripts/check_prompt.py` 对生成的提示词做结构自检（八段、可验证验收、守卫）。
 - **防误用**：给出「何时降档 / 不适用」「常见错误提示词（反例 → 修正）」与输出格式约定。
 
 ## 安装（DSH）
@@ -52,6 +60,17 @@ code-refactor-prompts/
 ## 使用
 
 对模型说「重构这段代码」或「给我一个重构提示词」，技能即被触发，产出结构化、强制带验收标准的提示词。
+
+## 提示词自检
+
+生成提示词后存成文件，用脚本做结构自检（八段是否齐全、验收是否可验证、守卫是否存在）：
+
+```bash
+python3 scripts/check_prompt.py my-prompt.txt
+cat my-prompt.txt | python3 scripts/check_prompt.py -
+```
+
+只检查结构，不判断语义质量；CI 用 `scripts/fixtures/` 里的正例 / 反例自测该脚本。
 
 ## CI 与发布
 

@@ -4,7 +4,7 @@ description: Compose high-quality, behavior-preserving code refactoring prompts.
 license: MIT
 metadata:
   author: f-e-n-g-0531
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # 代码重构优化提示词
@@ -104,6 +104,7 @@ metadata:
 - **完整文件**：文件较小（< 200 行）或需要直接替换时用；要求给出完整可运行文件并标注文件名。
 - **分步 patch**：大文件 / 多文件重构时按批次给 patch，每批附各自的验收命令。
 - **改动清单（必选）**：无论哪种格式，都要求「每处改动 → 改了什么 → 为什么 → 影响面」表格。
+- **生成后自检**：把提示词存成文件，运行 `python3 scripts/check_prompt.py <file>`，检查八段是否齐全、验收是否可验证。
 
 ## 迭代修复（应用后验证）
 

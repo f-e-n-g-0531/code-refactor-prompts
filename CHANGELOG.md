@@ -2,6 +2,20 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.2.0] - 2026-10-18
+
+### Added
+
+- `scripts/check_prompt.py`：生成提示词的结构自检工具（八段齐全、验收可验证、Guard Clauses），支持 `--json` 与 stdin。
+- `scripts/fixtures/`：正例 / 反例夹具，CI 自测该工具。
+- `examples/go-legacy-order-total.md`：遗留 Go 代码「行为基线 → 重构 → 差分测试」样例（`go test` 实测通过）。
+- `README.en.md`：英文说明，覆盖安装、使用、自检与发布流程。
+
+### Changed
+
+- CI 增加「提示词检查器自测」步骤；发布包纳入 `scripts/` 与英文 README。
+- SKILL.md「输出格式选项」补充生成后自检；校验脚本覆盖新增文件。
+
 ## [1.1.0] - 2026-10-18
 
 ### Added
