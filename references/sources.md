@@ -1,6 +1,6 @@
 # 出处与依据
 
-本技能的方法论沉淀自以下公开资料（检索与核验时间：2026-10）。按五类整理，每条附「可借鉴手法」。
+本技能的方法论沉淀自以下公开资料，按六类整理，每条附「可借鉴手法」。
 
 ## 一、核心实验与完整工作流
 
@@ -76,15 +76,7 @@
 - 说明：组件拆分／性能优化／bug 排查的完整中文提示词范例。
 - 可借鉴：「问题具体＋流程清晰＋结果验证＋经验总结」四要素。
 
-## 继续深挖的检索词
-
-在 GitHub／搜索引擎上可用下列关键词找到更多同类资源：
-- "refactoring prompts" / "code review system prompt" / "prompt engineering models"
-- "awesome-copilot / Awesome GitHub Copilot Customizations"（微软官方聚合仓）
-- "Claude Code refactor CLAUDE.md"（约束多文件重构范围）
-- "characterisation tests AI refactoring"（行为基线安全网）
-
-## 六、分语言参考（2026-10 深挖）
+## 六、分语言参考
 
 14. flickleafy/prompt-engineering-models · 11-language-stack-specific
 - 链接：https://github.com/flickleafy/prompt-engineering-models/tree/main/refactoring/11-language-stack-specific

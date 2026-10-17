@@ -8,7 +8,7 @@
 
 - SKILL.md — 主技能（核心原则、骨架、三档策略、默认模板）
 - references/specialized-prompts.md — 专项变体（性能/坏味道/拆分/安全/现代化/可测试性/解耦/SOLID/设计模式/技术债/分语言速查等）
-- references/language-specific.md — 分语言定制要点（深挖版）
+- references/language-specific.md — 分语言定制要点
 - references/sources.md — 出处与依据（19 条）
 - examples/ — 实战样例（策略 C 全景）
 

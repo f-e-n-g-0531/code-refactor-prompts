@@ -79,4 +79,4 @@ metadata:
 
 ## 专项变体
 
-性能优化、代码坏味道、大文件/长函数拆分、安全加固、现代化升级、可测试性、模块化解耦、SOLID、设计模式、技术债/遗留、分语言定制（速查）见 `references/specialized-prompts.md`；分语言深挖版见 `references/language-specific.md`；实战样例见 `examples/`。依据与出处见 `references/sources.md`。
+性能优化、代码坏味道、大文件/长函数拆分、安全加固、现代化升级、可测试性、模块化解耦、SOLID、设计模式、技术债/遗留、分语言定制（速查）见 `references/specialized-prompts.md`；分语言完整版见 `references/language-specific.md`；实战样例见 `examples/`。依据与出处见 `references/sources.md`。
