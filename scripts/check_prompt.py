@@ -5,8 +5,12 @@ This is a heuristic *structure* check, not a judgement of semantic quality.
 Both Chinese and English prompts are supported.
 
 Usage:
-    python3 scripts/check_prompt.py <file|-> [--json] [--lang auto|go|rust|python|...]
-                                    [--strict] [--skeleton] [--fix]
+    python3 scripts/check_prompt.py <file|dir|...> [--json] [--lang auto|go|rust|python|...]
+                                    [--strict] [--skeleton] [--fix] [--include PATTERNS]
+
+Multiple paths are supported. A directory is scanned recursively for
+*.prompt / *.prompt.md / *.prompt.txt (override with --include); this is what
+the bundled pre-commit hook runs on the files passed by pre-commit.
 
 Checks:
   - the eight required segments are present (Chinese or English headings);
@@ -21,6 +25,8 @@ Options:
     --strict     treat warnings as failures (CI gating)
     --skeleton   print fill-in skeletons for the segments that are missing
     --fix        append fill-in skeletons for missing segments to the file, then re-check
+    --include    comma-separated glob patterns for directory scans
+                 (default: *.prompt,*.prompt.md,*.prompt.txt)
 
 Exit codes: 0 = pass, 1 = problems found, 2 = usage error.
 """
@@ -334,13 +340,167 @@ def skeleton_blocks(keys: list[str], english: bool) -> list[str]:
     return [table[key] for key in keys if key in table]
 
 
+DEFAULT_INCLUDE_PATTERNS = ("*.prompt", "*.prompt.md", "*.prompt.txt")
+
+
+def build_skeleton_blocks(text: str) -> list[str]:
+    result = check(text)
+    keys = [item["segment"] for item in result["skeleton"]]
+    return skeleton_blocks(keys, looks_english(text))
+
+
+def apply_fix_to_file(path: Path, language: str, strict: bool) -> dict:
+    """Append missing-segment skeletons to path, then return the re-checked result."""
+    text = path.read_text(encoding="utf-8")
+    result = check(text, explicit_language=language, strict=strict)
+    keys = [item["segment"] for item in result["skeleton"]]
+    if keys:
+        english = looks_english(text)
+        note = (
+            "<!-- check_prompt.py --fix: missing-segment skeletons; move them into place and fill them in -->"
+            if english
+            else "<!-- check_prompt.py --fix: 以下为缺失段落骨架，请移动到对应位置并补全 -->"
+        )
+        blocks = skeleton_blocks(keys, english)
+        path.write_text(
+            text.rstrip() + "\n\n" + note + "\n\n" + "\n\n".join(blocks) + "\n",
+            encoding="utf-8",
+        )
+        print(f"--fix: appended {len(blocks)} missing segment skeleton(s) to {path}", file=sys.stderr)
+        text = path.read_text(encoding="utf-8")
+        result = check(text, explicit_language=language, strict=strict)
+    return result
+
+
+def print_result(result: dict, blocks: list[str] | None = None) -> None:
+    if result["pass"]:
+        note = ""
+        if result["languages"]:
+            note = " [" + " / ".join(LANGUAGE_LABELS[lang] for lang in result["languages"]) + "]"
+        print(f"PASS: 8 segments present, acceptance criteria verifiable{note}")
+    else:
+        print(f"FAIL: {len(result['errors'])} problem(s) found")
+        for item in result["errors"]:
+            print(f"  - {item['message']}")
+    for warning in result["warnings"]:
+        print(f"  warn: {warning['message']}")
+    if blocks:
+        print("\n--- 缺失段落骨架 / missing-segment skeletons ---")
+        for block in blocks:
+            print()
+            print(block)
+
+
+def collect_sources(sources: list[str], include: str) -> tuple[list[Path], list[str]]:
+    patterns = [item.strip() for item in include.split(",") if item.strip()]
+    files: list[Path] = []
+    missing: list[str] = []
+    seen: set[Path] = set()
+    for source in sources:
+        candidate = Path(source)
+        if candidate.is_dir():
+            found: list[Path] = []
+            for pattern in patterns:
+                found.extend(sorted(candidate.rglob(pattern)))
+            if not found:
+                missing.append(f"{source}（目录下没有匹配 {', '.join(patterns)} 的文件）")
+            for item in found:
+                key = item.resolve()
+                if key not in seen:
+                    seen.add(key)
+                    files.append(item)
+        elif candidate.is_file():
+            key = candidate.resolve()
+            if key not in seen:
+                seen.add(key)
+                files.append(candidate)
+        elif source == "-":
+            missing.append("-（stdin 只能单独使用 / stdin can only be used alone）")
+        else:
+            missing.append(source)
+    return files, missing
+
+
+def run_batch(
+    sources: list[str],
+    *,
+    include: str,
+    language: str,
+    strict: bool,
+    fix: bool,
+    skeleton_output: bool,
+    as_json: bool,
+) -> int:
+    files, missing = collect_sources(sources, include)
+    if missing:
+        for item in missing:
+            print(f"cannot check: {item}", file=sys.stderr)
+        return 2
+
+    results: list[dict] = []
+    passed = 0
+    failed = 0
+    for file in files:
+        text = file.read_text(encoding="utf-8")
+        if fix:
+            result = apply_fix_to_file(file, language, strict)
+            text = file.read_text(encoding="utf-8")
+        else:
+            result = check(text, explicit_language=language, strict=strict)
+        blocks = build_skeleton_blocks(text) if (skeleton_output and result["skeleton"]) else []
+        results.append(
+            {
+                "file": str(file),
+                "pass": result["pass"],
+                "errors": result["errors"],
+                "warnings": result["warnings"],
+                "missing_segments": result["missing_segments"],
+                "languages": result["languages"],
+                "language_source": result["language_source"],
+                "verifiable": result["verifiable"],
+            }
+        )
+        if result["pass"]:
+            passed += 1
+        else:
+            failed += 1
+        if not as_json:
+            print(f"{'PASS' if result['pass'] else 'FAIL'} {file}")
+            if not result["pass"]:
+                for item in result["errors"]:
+                    print(f"  - {item['message']}")
+            for warning in result["warnings"]:
+                print(f"  warn: {warning['message']}")
+            for block in blocks:
+                print()
+                print(block)
+
+    if as_json:
+        print(
+            json.dumps(
+                {"pass": failed == 0, "passed": passed, "failed": failed, "results": results},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        print(f"\n{passed} passed, {failed} failed ({len(files)} file(s) checked)")
+
+    return 0 if failed == 0 else 1
+
+
 def main() -> int:
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
 
     parser = argparse.ArgumentParser(description="Structural self-check for refactoring prompts.")
-    parser.add_argument("source", nargs="?", help="prompt file, or - for stdin")
+    parser.add_argument("sources", nargs="+", help="prompt files, '-' for stdin, or directories to scan")
+    parser.add_argument(
+        "--include",
+        default=",".join(DEFAULT_INCLUDE_PATTERNS),
+        help="comma-separated glob patterns for directory scans",
+    )
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     parser.add_argument(
         "--lang",
@@ -358,9 +518,6 @@ def main() -> int:
         print("--fix cannot be combined with --json or --skeleton", file=sys.stderr)
         return 2
 
-    if not args.source:
-        parser.print_usage(sys.stderr)
-        return 2
     language = args.lang.lower()
     if language != "auto" and language not in LANGUAGE_TEST_COMMANDS:
         print(
@@ -369,39 +526,38 @@ def main() -> int:
         )
         return 2
 
-    if args.source == "-":
+    sources = args.sources
+    if "-" in sources and len(sources) > 1:
+        print("stdin ('-') cannot be combined with other sources", file=sys.stderr)
+        return 2
+
+    batch = len(sources) > 1 or any(Path(source).is_dir() for source in sources)
+    if batch:
+        return run_batch(
+            sources,
+            include=args.include,
+            language=language,
+            strict=args.strict,
+            fix=args.fix,
+            skeleton_output=args.skeleton,
+            as_json=args.json,
+        )
+
+    source = sources[0]
+    if source == "-":
         text = sys.stdin.read()
     else:
-        path = Path(args.source)
-        if not path.is_file():
-            print(f"file not found: {args.source}", file=sys.stderr)
+        candidate = Path(source)
+        if not candidate.is_file():
+            print(f"file not found: {source}", file=sys.stderr)
             return 2
-        text = path.read_text(encoding="utf-8")
+        text = candidate.read_text(encoding="utf-8")
 
     if args.fix:
-        if args.source == "-":
+        if source == "-":
             print("--fix needs a file path (not stdin)", file=sys.stderr)
             return 2
-        fixed_path = Path(args.source)
-        result = check(text, explicit_language=language, strict=args.strict)
-        keys = [item["segment"] for item in result["skeleton"]]
-        if keys:
-            english = looks_english(text)
-            note = (
-                "<!-- check_prompt.py --fix: missing-segment skeletons; move them into place and fill them in -->"
-                if english
-                else "<!-- check_prompt.py --fix: 以下为缺失段落骨架，请移动到对应位置并补全 -->"
-            )
-            blocks = skeleton_blocks(keys, english)
-            fixed_path.write_text(
-                text.rstrip() + "\n\n" + note + "\n\n" + "\n\n".join(blocks) + "\n",
-                encoding="utf-8",
-            )
-            print(f"--fix: appended {len(blocks)} missing segment skeleton(s) to {fixed_path}", file=sys.stderr)
-        else:
-            print("--fix: no missing segments to append", file=sys.stderr)
-        text = fixed_path.read_text(encoding="utf-8")
-        result = check(text, explicit_language=language, strict=args.strict)
+        result = apply_fix_to_file(Path(source), language, args.strict)
         if result["pass"]:
             print("PASS after fix: 8 segments present, acceptance criteria verifiable")
         else:
@@ -413,34 +569,16 @@ def main() -> int:
         return 0 if result["pass"] else 1
 
     result = check(text, explicit_language=language, strict=args.strict)
-    keys = [item["segment"] for item in result["skeleton"]]
-    blocks = skeleton_blocks(keys, looks_english(text)) if args.skeleton else []
+    blocks = build_skeleton_blocks(text) if args.skeleton else []
 
     if args.json:
         payload = dict(result)
         payload["skeleton"] = blocks
         print(json.dumps(payload, ensure_ascii=False, indent=2))
-    elif result["pass"]:
-        language_note = ""
-        if result["languages"]:
-            language_note = " [" + " / ".join(LANGUAGE_LABELS[lang] for lang in result["languages"]) + "]"
-        print(f"PASS: 8 segments present, acceptance criteria verifiable{language_note}")
-        for warning in result["warnings"]:
-            print(f"  warn: {warning['message']}")
     else:
-        print(f"FAIL: {len(result['errors'])} problem(s) found")
-        for item in result["errors"]:
-            print(f"  - {item['message']}")
-        for warning in result["warnings"]:
-            print(f"  warn: {warning['message']}")
-
-    if blocks:
-        print("\n--- 缺失段落骨架 / missing-segment skeletons ---")
-        for block in blocks:
-            print()
-            print(block)
-    elif args.skeleton:
-        print("\nno missing segments to add.")
+        print_result(result, blocks)
+        if args.skeleton and not blocks:
+            print("\nno missing segments to add.")
 
     return 0 if result["pass"] else 1
 

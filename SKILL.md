@@ -4,7 +4,7 @@ description: Compose high-quality, behavior-preserving code refactoring prompts.
 license: MIT
 metadata:
   author: f-e-n-g-0531
-  version: "1.7.0"
+  version: "1.8.0"
 ---
 
 # 代码重构优化提示词
@@ -96,7 +96,7 @@ metadata:
 如有信息不足，先提问再动手。
 ```
 
-生成后自检与补全：`python3 scripts/check_prompt.py <file>` 检查结构；`--fix` 会把缺失段落骨架直接追加到文件并自动复查；`--strict` 让警告也阻止合入。详见 README「提示词自检」。
+支持目录批量检查（`check_prompt.py prompts/ --strict`），并附带可被 pre-commit 直接消费的 `.pre-commit-hooks.yaml`。生成后自检与补全：`python3 scripts/check_prompt.py <file>` 检查结构；`--fix` 会把缺失段落骨架直接追加到文件并自动复查；`--strict` 让警告也阻止合入。详见 README「提示词自检」。
 
 ## 输出格式选项
 

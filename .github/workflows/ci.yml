@@ -88,7 +88,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           git archive --format=zip --prefix=code-refactor-prompts/ -o dist/skill.zip HEAD \
-            SKILL.md README.md README.en.md CHANGELOG.md LICENSE .gitignore references examples scripts
+            SKILL.md README.md README.en.md CHANGELOG.md LICENSE .gitignore .pre-commit-hooks.yaml references examples scripts
           python3 - <<'PY'
           import zipfile
           names = zipfile.ZipFile("dist/skill.zip").namelist()
@@ -100,6 +100,7 @@ jobs:
               "code-refactor-prompts/examples/csharp-legacy-order-total.md",
               "code-refactor-prompts/examples/sql-legacy-report-equivalence.md",
               "code-refactor-prompts/scripts/check_prompt.py",
+              "code-refactor-prompts/.pre-commit-hooks.yaml",
           ]
           for entry in required:
               assert entry in names, f"missing from package: {entry}"

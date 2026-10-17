@@ -21,6 +21,7 @@ REQUIRED_FILES = [
     "CHANGELOG.md",
     "LICENSE",
     ".gitignore",
+    ".pre-commit-hooks.yaml",
     "references/specialized-prompts.md",
     "references/language-specific.md",
     "references/sources.md",
@@ -236,6 +237,20 @@ def check_ci_wiring() -> None:
             errors.append(f"ci.yml：未自测 scripts/fixtures/{fixture}")
 
 
+def check_precommit_hook() -> None:
+    """The pre-commit hook must ship, call the checker in strict mode, and be packaged."""
+    hooks = read(".pre-commit-hooks.yaml")
+    if "scripts/check_prompt.py --strict" not in hooks:
+        errors.append(".pre-commit-hooks.yaml：entry 应调用 scripts/check_prompt.py --strict")
+    if "pass_filenames: true" not in hooks:
+        errors.append(".pre-commit-hooks.yaml：应设置 pass_filenames: true")
+    if "files:" not in hooks:
+        errors.append(".pre-commit-hooks.yaml：缺少 files 匹配规则")
+    for workflow in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
+        if ".pre-commit-hooks.yaml" not in read(workflow):
+            errors.append(f"{workflow}：发布打包未包含 .pre-commit-hooks.yaml")
+
+
 def main() -> int:
     check_required_files()
     version = check_frontmatter()
@@ -244,6 +259,7 @@ def main() -> int:
     check_counts()
     check_examples()
     check_ci_wiring()
+    check_precommit_hook()
     check_copy()
     check_links()
 

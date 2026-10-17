@@ -2,6 +2,19 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.8.0] - 2026-10-18
+
+### Added
+
+- `check_prompt.py` 批量模式：支持多文件与目录递归检查（默认匹配 `*.prompt` / `*.prompt.md` / `*.prompt.txt`，`--include` 自定义），逐文件 PASS/FAIL + 汇总，兼容 `--fix` / `--strict` / `--json`；目录无匹配文件或 stdin 与其他来源混用返回退出码 2。
+- `.pre-commit-hooks.yaml`：可直接被 pre-commit 消费的钩子定义（entry `python3 scripts/check_prompt.py --strict`、`pass_filenames: true`）。
+- `scripts/tests/test_batch_and_hook.py`：12 个新用例覆盖目录扫描、多文件、`--include`、批量 `--fix` / `--json` / `--strict`、空目录与 stdin 混用、钩子定义与钩子契约。
+
+### Changed
+
+- CI / Release 发布包纳入 `.pre-commit-hooks.yaml`，dry-run 增加入包断言；校验脚本检查钩子定义与打包接线。
+- README / README.en 新增「接入 CI 与 pre-commit」；SKILL 说明批量用法；版本 1.8.0。
+
 ## [1.7.0] - 2026-10-18
 
 ### Added
