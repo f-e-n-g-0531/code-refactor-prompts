@@ -59,10 +59,19 @@
 
 ## 6. 分语言定制要点
 
-- **Java**：验收用 `mvn test` / `gradle test`；关注空安全、Stream API、Optional。
-- **Python**：验收用 `pytest`；关注类型注解、dataclass、生成器、可变默认参数陷阱。
-- **TypeScript / React**：验收用 `npm test`；关注类型收窄、组件拆分（每个 <100 行）、hooks 依赖数组。
-- **SQL**：关注执行计划、索引、连接顺序、N+1、参数化查询。
+把「测试命令 + 惯用重构手法 + 红线」替换进主模板对应占位符。速查如下，完整版见 `references/language-specific.md`。
+
+| 语言 | 测试/检查 | 惯用重构目标（节选） | 红线 |
+|------|-----------|----------------------|------|
+| Java | mvn test / gradle test | Stream+Collectors、Optional 去 null、record、sealed+switch、try-with-resources | 签名不变；Optional 不放 null |
+| Python | pytest；ruff / mypy | 推导式、with、类型注解、dataclass、match/case、pathlib | 可变默认参数；闭包晚绑定 |
+| JS/TS | npm test；tsc --noEmit | const/let、解构、async/await、类型收窄、?. 与 ?? | 别滥 !/any；改 async 保错误语义 |
+| React | npm test | Class→Hooks、自定义 Hook、按职责拆分 <100 行 | 依赖数组完整；Hook 顺序稳定 |
+| Go | go test；go vet；golangci-lint | 小接口、显式错误、context、组合 | 忽略 error / 滥用 panic；签名不变 |
+| Rust | cargo test；clippy；fmt | enum 令非法态不可表示、Result+?、借用优先、组合子 | 去 unwrap；不随意 unsafe |
+| C#/.NET | dotnet test；dotnet format | 启用 NRT、record、LINQ、switch 表达式、CancellationToken | 绝不 .Result/.Wait() |
+| SQL | 执行计划对比 | 消 N+1、参数化、CTE、明确索引 | 结果集等价；NULL 语义不变 |
+| C++ | CTest/GoogleTest；clang-tidy | RAII、智能指针、算法库、move 有度 | 不引入 UB/悬垂；生命周期语义不变 |
 
 ## 7. 行为基线测试（characterisation test）
 

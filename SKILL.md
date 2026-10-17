@@ -79,4 +79,4 @@ metadata:
 
 ## 专项变体
 
-性能优化、代码坏味道、大文件/长函数拆分、安全加固、现代化升级、分语言定制，见 `references/specialized-prompts.md`。依据与出处见 `references/sources.md`。
+性能优化、代码坏味道、大文件/长函数拆分、安全加固、现代化升级、分语言定制（速查）见 `references/specialized-prompts.md`；分语言深挖版见 `references/language-specific.md`。依据与出处见 `references/sources.md`。
