@@ -54,7 +54,23 @@ jobs:
             exit 1
           fi
           python3 scripts/check_prompt.py scripts/fixtures/good-prompt.txt --json > /dev/null
-          echo "prompt checker self-test OK"
+
+          python3 scripts/compose_prompt.py --code scripts/fixtures/sample.go --project order-pricing --out /tmp/composed-zh.txt
+          python3 scripts/check_prompt.py /tmp/composed-zh.txt
+          python3 scripts/compose_prompt.py --code scripts/fixtures/sample.py --output-lang en --out /tmp/composed-en.txt
+          python3 scripts/check_prompt.py /tmp/composed-en.txt
+          if python3 scripts/compose_prompt.py --code scripts/fixtures/sample.go --test-command pytest > /dev/null 2>&1; then
+            echo "::error::compose_prompt.py should refuse a prompt that fails the self-check"
+            exit 1
+          fi
+          cp scripts/fixtures/bad-prompt.txt /tmp/bad-fix.txt
+          if python3 scripts/check_prompt.py /tmp/bad-fix.txt > /dev/null 2>&1; then
+            echo "::error::bad fixture should fail before --fix"
+            exit 1
+          fi
+          python3 scripts/check_prompt.py /tmp/bad-fix.txt --fix > /dev/null
+          python3 scripts/check_prompt.py /tmp/bad-fix.txt
+          echo "prompt checker and composer self-test OK"
 
       - name: Set up Node.js for the TypeScript example
         uses: actions/setup-node@v4

@@ -6,7 +6,7 @@ Both Chinese and English prompts are supported.
 
 Usage:
     python3 scripts/check_prompt.py <file|-> [--json] [--lang auto|go|rust|python|...]
-                                    [--strict] [--skeleton]
+                                    [--strict] [--skeleton] [--fix]
 
 Checks:
   - the eight required segments are present (Chinese or English headings);
@@ -20,6 +20,7 @@ Checks:
 Options:
     --strict     treat warnings as failures (CI gating)
     --skeleton   print fill-in skeletons for the segments that are missing
+    --fix        append fill-in skeletons for missing segments to the file, then re-check
 
 Exit codes: 0 = pass, 1 = problems found, 2 = usage error.
 """
@@ -334,6 +335,10 @@ def skeleton_blocks(keys: list[str], english: bool) -> list[str]:
 
 
 def main() -> int:
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
     parser = argparse.ArgumentParser(description="Structural self-check for refactoring prompts.")
     parser.add_argument("source", nargs="?", help="prompt file, or - for stdin")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
@@ -346,7 +351,12 @@ def main() -> int:
     )
     parser.add_argument("--strict", action="store_true", help="treat warnings as failures")
     parser.add_argument("--skeleton", action="store_true", help="print fill-in skeletons for missing segments")
+    parser.add_argument("--fix", action="store_true", help="append missing-segment skeletons to the file and re-check")
     args = parser.parse_args()
+
+    if args.fix and (args.json or args.skeleton):
+        print("--fix cannot be combined with --json or --skeleton", file=sys.stderr)
+        return 2
 
     if not args.source:
         parser.print_usage(sys.stderr)
@@ -367,6 +377,40 @@ def main() -> int:
             print(f"file not found: {args.source}", file=sys.stderr)
             return 2
         text = path.read_text(encoding="utf-8")
+
+    if args.fix:
+        if args.source == "-":
+            print("--fix needs a file path (not stdin)", file=sys.stderr)
+            return 2
+        fixed_path = Path(args.source)
+        result = check(text, explicit_language=language, strict=args.strict)
+        keys = [item["segment"] for item in result["skeleton"]]
+        if keys:
+            english = looks_english(text)
+            note = (
+                "<!-- check_prompt.py --fix: missing-segment skeletons; move them into place and fill them in -->"
+                if english
+                else "<!-- check_prompt.py --fix: 以下为缺失段落骨架，请移动到对应位置并补全 -->"
+            )
+            blocks = skeleton_blocks(keys, english)
+            fixed_path.write_text(
+                text.rstrip() + "\n\n" + note + "\n\n" + "\n\n".join(blocks) + "\n",
+                encoding="utf-8",
+            )
+            print(f"--fix: appended {len(blocks)} missing segment skeleton(s) to {fixed_path}", file=sys.stderr)
+        else:
+            print("--fix: no missing segments to append", file=sys.stderr)
+        text = fixed_path.read_text(encoding="utf-8")
+        result = check(text, explicit_language=language, strict=args.strict)
+        if result["pass"]:
+            print("PASS after fix: 8 segments present, acceptance criteria verifiable")
+        else:
+            print(f"FAIL after fix: {len(result['errors'])} problem(s) found")
+            for item in result["errors"]:
+                print(f"  - {item['message']}")
+        for warning in result["warnings"]:
+            print(f"  warn: {warning['message']}")
+        return 0 if result["pass"] else 1
 
     result = check(text, explicit_language=language, strict=args.strict)
     keys = [item["segment"] for item in result["skeleton"]]

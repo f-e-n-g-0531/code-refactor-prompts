@@ -4,12 +4,12 @@ description: Compose high-quality, behavior-preserving code refactoring prompts.
 license: MIT
 metadata:
   author: f-e-n-g-0531
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # 代码重构优化提示词
 
-当用户要求重构/优化代码、索要重构提示词模板，或需要 AI 安全地重构、去坏味道、优化代码时，按本技能产出**可直接粘贴使用的结构化提示词**。默认中文输出；若用户指定语言/框架，把模板中 `{占位符}` 与测试命令填成对应的可用值。英文模板见 `references/template-en.md`；检查器支持中英文提示词（`--strict` 严格模式、`--skeleton` 补齐缺失段落）；主模板与英文模板本身也由 `audit_templates.py` 用同一检查器审计；仓库内 Python / Go / Rust / TypeScript / C# / SQL 六个样例均由 CI 实际执行（`verify_examples.py`），可直接照搬其验收标准写法；默认模板、英文模板与 13 个专项变体由 `audit_templates.py` 分级审计。
+当用户要求重构/优化代码、索要重构提示词模板，或需要 AI 安全地重构、去坏味道、优化代码时，按本技能产出**可直接粘贴使用的结构化提示词**。默认中文输出；若用户指定语言/框架，把模板中 `{占位符}` 与测试命令填成对应的可用值。英文模板见 `references/template-en.md`；检查器支持中英文提示词（`--strict` 严格模式、`--skeleton` 补齐缺失段落）；主模板与英文模板本身也由 `audit_templates.py` 用同一检查器审计；不想手填模板时，`scripts/compose_prompt.py` 可从源码文件一键生成填好的提示词（中/英，自动识别 13 种语言与测试命令），生成结果先过检查器才输出；仓库内 Python / Go / Rust / TypeScript / C# / SQL 六个样例均由 CI 实际执行（`verify_examples.py`），可直接照搬其验收标准写法；默认模板、英文模板与 13 个专项变体由 `audit_templates.py` 分级审计。
 
 ## 核心原则
 
@@ -95,6 +95,8 @@ metadata:
 
 如有信息不足，先提问再动手。
 ```
+
+生成后自检与补全：`python3 scripts/check_prompt.py <file>` 检查结构；`--fix` 会把缺失段落骨架直接追加到文件并自动复查；`--strict` 让警告也阻止合入。详见 README「提示词自检」。
 
 ## 输出格式选项
 

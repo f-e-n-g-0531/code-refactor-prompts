@@ -35,7 +35,8 @@ code-refactor-prompts/
 │   └── sql-legacy-report-equivalence.md           可执行样例（SQL 结果集 golden + 差分）
 ├── scripts/
 │   ├── check_prompt.py           生成提示词自检（八段 / 可验证 / 语言匹配 / 反模式 / 双语）
-│   └── fixtures/                 正例 / 反例（CI 自测用）
+│   ├── compose_prompt.py         从源码文件一键生成「已填好且自检通过」的提示词
+│   └── fixtures/                 正例 / 反例 / 示例源码（CI 自测用）
 └── .github/
     ├── workflows/
     │   ├── ci.yml                校验 + 模板审计 + 自测 + 样例实跑（push / PR）
@@ -55,7 +56,8 @@ code-refactor-prompts/
 - **Guard Clauses 防废话**：无代码输出 NO_CODE_PROVIDED，无问题输出 NO_REFACTORING_NEEDED。
 - **端到端工作流**：评审驱动重构、遗留代码先锁行为基线、多文件分批验收、AI 输出后的迭代修复。
 - **分语言定制**：Java / Python / JS-TS / React / Go / Rust / C# / C++ / SQL / Kotlin / Swift / Ruby / PHP 的惯用手法、测试命令与红线。
-- **可自检（双语）**：`scripts/check_prompt.py` 检查八段、可验证验收与守卫；自动识别中英文段落与提示词语言，校验验收命令是否匹配（如 Go 必须写 `go test`），拦截「顺便改测试」「整体重写」「空泛指标」等中英文反模式；支持 `--strict`（警告即失败）与 `--skeleton`（打印缺失段落骨架）。
+- **一键生成**：`scripts/compose_prompt.py --code <文件>` 从源码文件生成填好的八段提示词（中 / 英，自动识别 13 种语言与测试命令），生成结果先过检查器，不合规就拒绝输出。
+- **可自检（双语）**：`scripts/check_prompt.py` 检查八段、可验证验收与守卫；自动识别中英文段落与提示词语言，校验验收命令是否匹配（如 Go 必须写 `go test`），拦截「顺便改测试」「整体重写」「空泛指标」等中英文反模式；支持 `--strict`（警告即失败）、`--skeleton`（打印缺失段落骨架）与 `--fix`（把缺失段落骨架追加到文件并复查）。
 - **样例可执行**：6 个跨语言 / 跨领域样例由 CI 用 `verify_examples.py` 真实执行（`go test` / `python -m unittest` / `cargo test` / `node --test` / `dotnet run` / SQLite 结果集对比），文档与代码不会脱节。
 - **分级审计**：`audit_templates.py` 用同一检查器审计 SKILL.md 默认模板与英文模板（完整八段检查）；13 个专项变体则检查「验收锚点」与反模式——主模板和变体的质量都不靠自觉。
 - **英文模板**：`references/template-en.md` 提供八段式英文主模板，便于英文代码库与评审流程直接使用。
@@ -71,6 +73,18 @@ code-refactor-prompts/
 
 对模型说「重构这段代码」或「给我一个重构提示词」，技能即被触发，产出结构化、强制带验收标准的提示词。英文代码库可直接套用 [英文主模板](references/template-en.md)。
 
+## 一键生成提示词
+
+手头有代码但不想手填模板时：
+
+```bash
+python3 scripts/compose_prompt.py --code src/order.go --project order-pricing \
+    --pain "Total 函数 150 行、魔法数字散落" --out prompt.txt
+python3 scripts/check_prompt.py prompt.txt
+```
+
+自动识别的语言与默认测试命令覆盖 Go / Python / Java / Rust / TypeScript / JavaScript / C# / Kotlin / Swift / Ruby / PHP / C++ / SQL；生成时已内置自检，若生成的提示词过不了检查器（例如 `--test-command` 与语言不匹配），脚本直接报错退出、不输出不合规提示词。
+
 ## 提示词自检
 
 生成提示词后存成文件，用脚本做结构自检（八段是否齐全、验收是否可验证、验收命令与语言是否匹配、是否存在典型反模式；中英文提示词均可）：
@@ -80,6 +94,7 @@ python3 scripts/check_prompt.py my-prompt.txt
 python3 scripts/check_prompt.py my-prompt.txt --lang go       # 显式指定语言
 python3 scripts/check_prompt.py my-prompt.txt --strict        # 警告也视为失败（团队门禁）
 python3 scripts/check_prompt.py my-prompt.txt --skeleton      # 打印缺失段落骨架
+python3 scripts/check_prompt.py my-prompt.txt --fix           # 追加缺失段落骨架并复查
 cat my-prompt.txt | python3 scripts/check_prompt.py -
 ```
 

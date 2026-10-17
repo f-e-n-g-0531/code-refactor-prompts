@@ -34,6 +34,9 @@ REQUIRED_FILES = [
     "examples/csharp-legacy-order-total.md",
     "examples/sql-legacy-report-equivalence.md",
     "scripts/check_prompt.py",
+    "scripts/compose_prompt.py",
+    "scripts/fixtures/sample.go",
+    "scripts/fixtures/sample.py",
     "scripts/fixtures/good-prompt.txt",
     "scripts/fixtures/good-go-prompt.txt",
     "scripts/fixtures/good-en-prompt.txt",
@@ -209,6 +212,10 @@ def check_ci_wiring() -> None:
         errors.append("ci.yml：未接入 verify_examples.py（可执行样例将不再被验证）")
     if "audit_templates.py" not in ci:
         errors.append("ci.yml：未接入 audit_templates.py（模板自审计缺失）")
+    if "compose_prompt.py" not in ci:
+        errors.append("ci.yml：未自测 compose_prompt.py（生成器未闭环验证）")
+    if "--fix" not in ci:
+        errors.append("ci.yml：未自测 check_prompt.py --fix（修复闭环未验证）")
     for fixture in (
         "good-prompt.txt",
         "good-go-prompt.txt",

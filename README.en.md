@@ -35,7 +35,8 @@ code-refactor-prompts/
 │   └── sql-legacy-report-equivalence.md           executable: SQL golden result set + differential check
 ├── scripts/
 │   ├── check_prompt.py           structural self-check (segments / verifiability / language / anti-patterns / bilingual)
-│   └── fixtures/                 good / bad prompt fixtures used by CI
+│   ├── compose_prompt.py         compose a filled, self-checked prompt from a source file
+│   └── fixtures/                 good / bad fixtures and sample sources used by CI
 └── .github/
     ├── workflows/
     │   ├── ci.yml                validate + template audit + self-test + execute examples (push / PR)
@@ -55,7 +56,8 @@ code-refactor-prompts/
 - **Guard clauses**: `NO_CODE_PROVIDED` when no code, `NO_REFACTORING_NEEDED` when nothing to fix.
 - **Per-language guidance**: Java, Python, JS/TS, React, Go, Rust, C#, C++, SQL, Kotlin, Swift, Ruby, PHP.
 - **End-to-end workflows**: review-first, legacy baseline, multi-file batching, iterative repair.
-- **Bilingual self-check**: `scripts/check_prompt.py` validates the eight segments and verifiability in Chinese and English, detects the prompt language and checks that the acceptance command matches it (e.g. Go requires `go test`), and flags anti-patterns such as "tweak the tests as well" or "rewrite the whole project". Adds `--strict` (warnings fail) and `--skeleton` (print fill-in skeletons for missing segments).
+- **One-command composition**: `scripts/compose_prompt.py --code <file>` builds a filled eight-segment prompt (Chinese or English, auto-detects 13 languages and their test commands) and refuses to emit it unless it passes the shipped checker.
+- **Bilingual self-check**: `scripts/check_prompt.py` validates the eight segments and verifiability in Chinese and English, detects the prompt language and checks that the acceptance command matches it (e.g. Go requires `go test`), and flags anti-patterns such as "tweak the tests as well" or "rewrite the whole project". Adds `--strict` (warnings fail), `--skeleton` (print fill-in skeletons for missing segments) and `--fix` (append missing-segment skeletons to the file and re-check).
 - **Executable examples**: 6 runnable examples are run in CI by `verify_examples.py` (`go test` / `python -m unittest` / `cargo test` / `node --test` / `dotnet run` / SQLite result-set comparison), so docs cannot drift from code.
 - **Graded audit**: `audit_templates.py` runs the full checker over the default and English master templates, and checks each of the 13 specialised variants for an acceptance anchor and anti-patterns.
 - **English template**: `references/template-en.md` provides the eight-segment master template in English.
@@ -71,6 +73,16 @@ code-refactor-prompts/
 
 Ask the model to "refactor this code" or "give me a refactoring prompt". The skill triggers and returns a structured prompt with mandatory acceptance criteria. For English codebases use the [English master template](references/template-en.md).
 
+## Compose a prompt
+
+```bash
+python3 scripts/compose_prompt.py --code src/order.go --project order-pricing \
+    --pain "150-line Total function, magic numbers everywhere" --out prompt.txt
+python3 scripts/check_prompt.py prompt.txt
+```
+
+Language and default test command are auto-detected for Go / Python / Java / Rust / TypeScript / JavaScript / C# / Kotlin / Swift / Ruby / PHP / C++ / SQL. Composition self-checks the result and exits non-zero instead of emitting a prompt that would fail the checker.
+
 ## Self-check a prompt
 
 ```bash
@@ -78,6 +90,7 @@ python3 scripts/check_prompt.py my-prompt.txt
 python3 scripts/check_prompt.py my-prompt.txt --lang go       # force the language
 python3 scripts/check_prompt.py my-prompt.txt --strict        # warnings fail (team gate)
 python3 scripts/check_prompt.py my-prompt.txt --skeleton      # print skeletons for missing segments
+python3 scripts/check_prompt.py my-prompt.txt --fix           # append skeletons to the file and re-check
 cat my-prompt.txt | python3 scripts/check_prompt.py -
 ```
 
