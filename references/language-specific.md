@@ -89,7 +89,47 @@
   - 拆复杂查询为 CTE 提可读；去重复子查询；明确索引使用；避免 SELECT * 与隐式类型转换
 - 红线：结果集必须等价；不得改变 NULL 语义与排序；性能改动附执行计划前后对比
 
-## 其余（Ruby / PHP）
+## Kotlin
 
-- Ruby：`rspec`；惯用 Enumerable、块与 yield、符号哈希、guard clause；避免猴子补丁滥用。
-- PHP：`composer test`（PHPUnit）+ PHPStan / Psalm；惯用类型声明（7.4+ 属性、8.x union / enum / match）；少用全局状态；用异常而非返回码。
+- 基线版本：Kotlin 2.x（JVM）
+- 验证：`./gradlew test`；静态：`./gradlew ktlintCheck` / `detekt`
+- 惯用重构目标：
+  - 不可变优先：`val` 替代 `var`；`data class` 表达值对象，`copy()` 替代手工构造
+  - `sealed interface` / `sealed class` + 穷举 `when` 替代类型判断链
+  - 扩展函数收敛工具方法；集合操作（map / filter / groupBy / associateBy）替代手写累加
+  - 空安全：`?.` / `?:` / `requireNotNull` 替代 Java 风格 null 判断
+  - 协程：挂起函数替代回调；`coroutineScope` / `supervisorScope` 表达结构化并发
+- 红线：不要把 Java 写法原样搬进 Kotlin；保持与 Java 互操作的公开签名（`@JvmStatic` / `@JvmField` 语义不变）；协程的取消与异常传播语义不变；不堆叠作用域函数降低可读性
+
+## Swift
+
+- 基线版本：Swift 5.9+ / 6（严格并发检查）
+- 验证：`swift test`（XCTest / Swift Testing）；静态：SwiftLint / SwiftFormat
+- 惯用重构目标：
+  - 值语义优先：`struct` / `enum` 替代 `class`；带关联值的 enum 建模状态
+  - Optional 用 `guard let` / `if let` 早退；错误用 `throws` / `Result` 显式表达
+  - 协议 + 扩展（protocol-oriented）替代继承深链；`async/await` 与 actor 替代回调与手写锁
+  - `@MainActor` 隔离 UI 状态；`Sendable` 约束跨并发域传递
+- 红线：不破坏公开 API 与 Objective-C 互操作（`@objc` / NSObject 子类）；保持 actor 隔离与 Sendable 正确性；生产代码不留 `try!` / `as!`
+
+## Ruby
+
+- 基线版本：Ruby 3.x
+- 验证：`bundle exec rspec`（或 `rake test`）；静态：`rubocop`
+- 惯用重构目标：
+  - Enumerable（map / select / reduce / each_with_object）替代手写 each 累加
+  - 块与 `yield` 替代回调对象；参数超过 2 个时改用关键字参数
+  - 模块（mixin）收敛横切逻辑；值对象 / Service Object 替代上帝类
+  - guard clause 早退替代深层嵌套；`&.` 安全导航、`dig` 处理嵌套哈希
+- 红线：不滥用猴子补丁；元编程（`method_missing` / `define_method`）必须有明确收益；保持公开方法签名与异常类型；不改动框架约定（如 Rails 回调语义）
+
+## PHP
+
+- 基线版本：PHP 8.1+
+- 验证：`vendor/bin/phpunit`（或 Pest）；静态：PHPStan / Psalm + `php-cs-fixer`
+- 惯用重构目标：
+  - 严格类型：`declare(strict_types=1)`、参数/返回类型、`readonly` 属性、`enum` 替代魔法常量
+  - 构造器注入替代全局状态 / Service Locator；接口抽象替换具体依赖
+  - `match` 替代 switch；`?->` 空安全；命名参数提升可读性
+  - 集合（Laravel Collection 等）或数组函数替代手写循环
+- 红线：保持公开 API 与自动加载（PSR-4）不变；异常契约不变；不引入未使用依赖；不把类型声明放宽

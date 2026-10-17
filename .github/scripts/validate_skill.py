@@ -23,7 +23,9 @@ REQUIRED_FILES = [
     "references/specialized-prompts.md",
     "references/language-specific.md",
     "references/sources.md",
+    "references/workflows.md",
     "examples/java-order-calculator-strategy-c.md",
+    "examples/python-legacy-characterisation.md",
 ]
 
 # Process / placeholder copy that must never leak into a released skill.
@@ -98,6 +100,7 @@ def check_references_wired() -> None:
         "references/specialized-prompts.md",
         "references/language-specific.md",
         "references/sources.md",
+        "references/workflows.md",
     ):
         if ref not in skill:
             errors.append(f"SKILL.md：未引用 {ref}")

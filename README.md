@@ -5,7 +5,7 @@
 
 一个用于生成高质量、行为等价、可验收的 **代码重构提示词** 的可复用技能（DSH Skill）。
 
-本技能把「信息密度决定质量上限」的方法论沉淀为可直接加载、可直接粘贴使用的结构化提示词体系：三档策略（A 模糊 / B 结构化 / C 上下文＋验收标准）、八段式骨架、13 个专项变体、分语言定制参考，并以「行为基线测试 + 可验证验收标准」和 Guard Clauses 作为两道质量防线。
+本技能把「信息密度决定质量上限」的方法论沉淀为可直接加载、可直接粘贴使用的结构化提示词体系：三档策略（A 模糊 / B 结构化 / C 上下文＋验收标准）、八段式骨架、13 个专项变体、分语言定制参考、端到端工作流，并以「行为基线测试 + 可验证验收标准」和 Guard Clauses 作为两道质量防线。
 
 ## 结构
 
@@ -18,10 +18,12 @@ code-refactor-prompts/
 ├── .gitignore
 ├── references/
 │   ├── specialized-prompts.md    13 个专项变体提示词
-│   ├── language-specific.md      分语言定制要点（Java/Python/JS-TS/React/Go/Rust/C#/C++/SQL/Ruby/PHP）
+│   ├── language-specific.md      分语言定制要点（12 门语言，含 Kotlin / Swift / Ruby / PHP）
+│   ├── workflows.md              端到端工作流（评审 / 基线 / 分批 / 迭代修复）
 │   └── sources.md                出处与依据（19 条）
 ├── examples/
-│   └── java-order-calculator-strategy-c.md   实战样例（策略 C 全景）
+│   ├── java-order-calculator-strategy-c.md   实战样例（策略 C 全景）
+│   └── python-legacy-characterisation.md     实战样例（遗留代码行为基线）
 └── .github/
     ├── workflows/
     │   ├── ci.yml                结构校验（push / PR）
@@ -37,7 +39,9 @@ code-refactor-prompts/
 - **八段式骨架**：角色、上下文、待重构代码、硬约束、重构目标、验收标准、输出格式、守卫，缺一不可。
 - **行为等价可验收**：用「行为基线测试 + 可验证验收标准」取代空泛的「保持行为不变」。
 - **Guard Clauses 防废话**：无代码输出 NO_CODE_PROVIDED，无问题输出 NO_REFACTORING_NEEDED。
-- **分语言定制**：Java / Python / JS-TS / React / Go / Rust / C# / C++ / SQL / Ruby / PHP 的惯用手法、测试命令与红线。
+- **端到端工作流**：评审驱动重构、遗留代码先锁行为基线、多文件分批验收、AI 输出后的迭代修复。
+- **分语言定制**：Java / Python / JS-TS / React / Go / Rust / C# / C++ / SQL / Kotlin / Swift / Ruby / PHP 的惯用手法、测试命令与红线。
+- **防误用**：给出「何时降档 / 不适用」「常见错误提示词（反例 → 修正）」与输出格式约定。
 
 ## 安装（DSH）
 
