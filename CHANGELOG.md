@@ -11,3 +11,4 @@
 - 分语言参考：Java、Python、JavaScript/TypeScript、React、Go、Rust、C#/.NET、C++、SQL，以及 Ruby/PHP。
 - 19 条出处与依据，分六大类。
 - 1 个实战样例（Java 订单计算器 · 策略 C 全景）。
+- GitHub Actions CI：`ci.yml` 校验结构 / frontmatter / 版本一致性 / 相对链接 / 文案，`release.yml` 在推送 `v*` 标签时自动发布 GitHub Release，并附 `zip`、`tar.gz` 与 `SHA256SUMS`。

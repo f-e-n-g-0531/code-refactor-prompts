@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate skill
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate structure, frontmatter, links and copy
+        run: python3 .github/scripts/validate_skill.py
+
+      - name: Dry-run release packaging
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          git archive --format=zip --prefix=code-refactor-prompts/ -o dist/skill.zip HEAD \
+            SKILL.md README.md CHANGELOG.md LICENSE .gitignore references examples
+          python3 - <<'PY'
+          import zipfile
+          names = zipfile.ZipFile("dist/skill.zip").namelist()
+          assert "code-refactor-prompts/SKILL.md" in names, names[:5]
+          assert any(n.startswith("code-refactor-prompts/references/") for n in names), "references missing"
+          assert not any("/.github/" in n for n in names), "package must not include .github"
+          print("package OK:", len(names), "entries")
+          PY
