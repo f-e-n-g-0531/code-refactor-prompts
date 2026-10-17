@@ -4,12 +4,12 @@ description: Compose high-quality, behavior-preserving code refactoring prompts.
 license: MIT
 metadata:
   author: f-e-n-g-0531
-  version: "1.2.0"
+  version: "1.3.0"
 ---
 
 # 代码重构优化提示词
 
-当用户要求重构/优化代码、索要重构提示词模板，或需要 AI 安全地重构、去坏味道、优化代码时，按本技能产出**可直接粘贴使用的结构化提示词**。默认中文输出；若用户指定语言/框架，把模板中 `{占位符}` 与测试命令填成对应的可用值。
+当用户要求重构/优化代码、索要重构提示词模板，或需要 AI 安全地重构、去坏味道、优化代码时，按本技能产出**可直接粘贴使用的结构化提示词**。默认中文输出；若用户指定语言/框架，把模板中 `{占位符}` 与测试命令填成对应的可用值。英文模板见 `references/template-en.md`；仓库内 Python / Go / Rust / TypeScript 样例均由 CI 实际执行（`verify_examples.py`），可直接照搬其验收标准写法。
 
 ## 核心原则
 
@@ -83,7 +83,7 @@ metadata:
 
 【验收标准（必填，用可验证的用例/命令表达）】
 重构后（含上面生成的行为基线测试）必须全部通过：
-- 测试命令：{例如 pytest / npm test / mvn test}
+- 测试命令：{例如 pytest / npm test / mvn test / go test ./... / cargo test}
 - 用例：{给定输入 → 期望输出}
 - 若无法运行测试：给出等价验证步骤（命令 + 预期输出，或可手工核对的检查清单）
 
@@ -104,7 +104,7 @@ metadata:
 - **完整文件**：文件较小（< 200 行）或需要直接替换时用；要求给出完整可运行文件并标注文件名。
 - **分步 patch**：大文件 / 多文件重构时按批次给 patch，每批附各自的验收命令。
 - **改动清单（必选）**：无论哪种格式，都要求「每处改动 → 改了什么 → 为什么 → 影响面」表格。
-- **生成后自检**：把提示词存成文件，运行 `python3 scripts/check_prompt.py <file>`，检查八段是否齐全、验收是否可验证。
+- **生成后自检**：把提示词存成文件，运行 `python3 scripts/check_prompt.py <file>`，检查八段是否齐全、验收是否可验证、验收命令与语言是否匹配（自动识别，或 `--lang go` 显式指定），并拦截「顺便改测试」「整体重写」等典型反模式。
 
 ## 迭代修复（应用后验证）
 
@@ -116,4 +116,4 @@ metadata:
 
 ## 专项变体
 
-性能优化、代码坏味道、大文件/长函数拆分、安全加固、现代化升级、分语言定制（速查）、行为基线测试、守卫（Guard Clauses）、可测试性改造、模块化/解耦、SOLID 原则、设计模式应用、技术债/遗留系统，见 `references/specialized-prompts.md`；分语言完整版见 `references/language-specific.md`；端到端流程（评审驱动、遗留代码基线、多文件分批、迭代修复）见 `references/workflows.md`；实战样例见 `examples/`。依据与出处见 `references/sources.md`。
+性能优化、代码坏味道、大文件/长函数拆分、安全加固、现代化升级、分语言定制（速查）、行为基线测试、守卫（Guard Clauses）、可测试性改造、模块化/解耦、SOLID 原则、设计模式应用、技术债/遗留系统，见 `references/specialized-prompts.md`；分语言完整版见 `references/language-specific.md`；端到端流程（评审驱动、遗留代码基线、多文件分批、迭代修复）见 `references/workflows.md`；英文主模板见 `references/template-en.md`；实战样例见 `examples/`；依据与出处见 `references/sources.md`。

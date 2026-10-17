@@ -25,12 +25,19 @@ REQUIRED_FILES = [
     "references/language-specific.md",
     "references/sources.md",
     "references/workflows.md",
+    "references/template-en.md",
     "examples/java-order-calculator-strategy-c.md",
     "examples/python-legacy-characterisation.md",
     "examples/go-legacy-order-total.md",
+    "examples/rust-legacy-order-total.md",
+    "examples/typescript-legacy-characterisation.md",
     "scripts/check_prompt.py",
     "scripts/fixtures/good-prompt.txt",
+    "scripts/fixtures/good-go-prompt.txt",
     "scripts/fixtures/bad-prompt.txt",
+    "scripts/fixtures/bad-language-prompt.txt",
+    "scripts/fixtures/bad-antipattern-prompt.txt",
+    ".github/scripts/verify_examples.py",
 ]
 
 # Process / placeholder copy that must never leak into a released skill.
@@ -106,6 +113,7 @@ def check_references_wired() -> None:
         "references/language-specific.md",
         "references/sources.md",
         "references/workflows.md",
+        "references/template-en.md",
     ):
         if ref not in skill:
             errors.append(f"SKILL.md：未引用 {ref}")
@@ -154,12 +162,51 @@ def check_links() -> None:
                 errors.append(f"{rel}: 相对链接指向不存在的文件：{target}")
 
 
+def check_examples() -> None:
+    """Samples must be listed in both READMEs; executable ones must declare markers."""
+    readme = read("README.md")
+    readme_en = read("README.en.md")
+    examples = sorted((ROOT / "examples").glob("*.md"))
+    if not examples:
+        errors.append("examples/ 下没有任何样例")
+    for path in examples:
+        name = path.name
+        text = path.read_text(encoding="utf-8")
+        for document, label in ((readme, "README.md"), (readme_en, "README.en.md")):
+            if name not in document:
+                errors.append(f"{label}：未列出样例 {name}")
+        has_run = "<!-- verify:run" in text
+        marked = len(re.findall(r"<!--\s*verify:file=", text))
+        if has_run and marked == 0:
+            errors.append(f"examples/{name}：声明了 verify:run 但没有 verify:file 代码块")
+        if not has_run and marked > 0:
+            errors.append(f"examples/{name}：有 verify:file 代码块但没有 verify:run 命令")
+
+
+def check_ci_wiring() -> None:
+    """The prompt checker self-tests and example verification must run in CI."""
+    ci = read(".github/workflows/ci.yml")
+    if "verify_examples.py" not in ci:
+        errors.append("ci.yml：未接入 verify_examples.py（可执行样例将不再被验证）")
+    for fixture in (
+        "good-prompt.txt",
+        "good-go-prompt.txt",
+        "bad-prompt.txt",
+        "bad-language-prompt.txt",
+        "bad-antipattern-prompt.txt",
+    ):
+        if fixture not in ci:
+            errors.append(f"ci.yml：未自测 scripts/fixtures/{fixture}")
+
+
 def main() -> int:
     check_required_files()
     version = check_frontmatter()
     check_version(version)
     check_references_wired()
     check_counts()
+    check_examples()
+    check_ci_wiring()
     check_copy()
     check_links()
 
@@ -170,7 +217,7 @@ def main() -> int:
         for item in errors:
             print(f"  - {item}")
         return 1
-    print("OK: skill structure, frontmatter, version, references, links and copy are valid.")
+    print("OK: skill structure, frontmatter, version, references, examples, links and copy are valid.")
     return 0
 
 

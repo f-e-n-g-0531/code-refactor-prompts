@@ -39,6 +39,14 @@ jobs:
       - name: Validate skill
         run: python3 .github/scripts/validate_skill.py
 
+      - name: Set up Node.js for the TypeScript example
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Verify examples are executable
+        run: python3 .github/scripts/verify_examples.py --require-all
+
       - name: Build release notes from CHANGELOG
         run: python3 .github/scripts/release_notes.py "${{ steps.meta.outputs.tag }}" > release-notes.md
 

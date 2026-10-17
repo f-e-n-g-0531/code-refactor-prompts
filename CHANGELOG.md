@@ -2,6 +2,22 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.3.0] - 2026-10-18
+
+### Added
+
+- 提示词检查器升级：自动识别提示词语言（或 `--lang` 显式指定），校验验收命令与语言是否匹配（Go → `go test`、Rust → `cargo test`、Python → `pytest`，等），并内置反模式词库（改测试迁就代码、整体重写、「最佳实践」无依据重写、空泛指标、顺手扩大范围、允许行为变化、模棱两可约束）。
+- `examples/rust-legacy-order-total.md`：可执行 Rust 样例（行为基线 + 差分测试，`cargo test` 实测通过）。
+- `examples/typescript-legacy-characterisation.md`：可执行 TypeScript 样例（保留 `any` 遗留行为的运行时等价重构，`node --test` 实测通过）。
+- `references/template-en.md`：英文主模板（八段式骨架、验收标准、输出格式与自检说明）。
+- `.github/scripts/verify_examples.py`：从样例 Markdown 提取带标记代码块，写入临时工程并真实执行；CI 与 Release 流程新增「Verify examples」步骤（Node 24）。
+
+### Changed
+
+- Go 与 Python 样例改为可执行：Go 重构版导出为 `TotalRefactored` 以便与遗留实现在同包内做差分测试；Python 基线测试改用标准库 `unittest`（零依赖）并补充固定种子的差分测试。
+- 校验脚本覆盖新增文件、英文模板引用、样例可执行标记与 CI 接线；CI 自测新增语言不匹配与反模式夹具。
+- SKILL.md、README、README.en.md 同步更新；发布包纳入新增样例与英文模板。
+
 ## [1.2.0] - 2026-10-18
 
 ### Added

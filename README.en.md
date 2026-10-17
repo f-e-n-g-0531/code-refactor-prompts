@@ -7,7 +7,7 @@
 
 A reusable **DSH skill** that produces high-quality, behaviour-preserving, verifiable **code-refactoring prompts**.
 
-It distils the "information density caps quality" methodology into ready-to-paste structured prompts: three tiers (A vague / B structured / C context + acceptance criteria), an eight-segment skeleton, 13 specialised variants, per-language guidance for 12 languages, and end-to-end workflows. Two quality gates keep it honest: behaviour-baseline (characterisation) tests and Guard Clauses.
+It distils the "information density caps quality" methodology into ready-to-paste structured prompts: three tiers (A vague / B structured / C context + acceptance criteria), an eight-segment skeleton, 13 specialised variants, per-language guidance for 12 languages, and end-to-end workflows. Two quality gates keep it honest: behaviour-baseline (characterisation) tests and Guard Clauses. The samples are not decorative: the Python / Go / Rust / TypeScript examples are executed for real in CI.
 
 ## Structure
 
@@ -23,15 +23,25 @@ code-refactor-prompts/
 │   ├── specialized-prompts.md    13 specialised prompt variants
 │   ├── language-specific.md      per-language guidance (12 languages)
 │   ├── workflows.md              end-to-end workflows (review / baseline / batches / repair)
+│   ├── template-en.md            English master template (segments, acceptance, output format)
 │   └── sources.md                19 sources
 ├── examples/
-│   ├── java-order-calculator-strategy-c.md     strategy C walkthrough
-│   ├── python-legacy-characterisation.md       legacy Python baseline
-│   └── go-legacy-order-total.md                legacy Go baseline + differential test
+│   ├── java-order-calculator-strategy-c.md        strategy C walkthrough
+│   ├── python-legacy-characterisation.md          executable: Python baseline + differential test
+│   ├── go-legacy-order-total.md                   executable: Go baseline + differential test
+│   ├── rust-legacy-order-total.md                 executable: Rust baseline + differential test
+│   └── typescript-legacy-characterisation.md      executable: TS runtime-equivalent typed refactor
 ├── scripts/
-│   ├── check_prompt.py           structural self-check for generated prompts
+│   ├── check_prompt.py           structural self-check (segments / verifiability / language / anti-patterns)
 │   └── fixtures/                 good / bad prompt fixtures used by CI
-└── .github/                      CI and tag-driven release automation
+└── .github/
+    ├── workflows/
+    │   ├── ci.yml                validate + self-test + execute examples (push / PR)
+    │   └── release.yml           tag-driven automated release
+    └── scripts/
+        ├── validate_skill.py     structure and copy validation
+        ├── verify_examples.py    extract marked code from examples and run it
+        └── release_notes.py      release notes from CHANGELOG
 ```
 
 ## Features
@@ -42,7 +52,9 @@ code-refactor-prompts/
 - **Guard clauses**: `NO_CODE_PROVIDED` when no code, `NO_REFACTORING_NEEDED` when nothing to fix.
 - **Per-language guidance**: Java, Python, JS/TS, React, Go, Rust, C#, C++, SQL, Kotlin, Swift, Ruby, PHP.
 - **End-to-end workflows**: review-first, legacy baseline, multi-file batching, iterative repair.
-- **Prompt self-check**: `scripts/check_prompt.py` lints a generated prompt for the eight segments and verifiable acceptance.
+- **Prompt self-check**: `scripts/check_prompt.py` validates the eight segments and verifiability, detects the prompt language and checks that the acceptance command matches it (e.g. Go requires `go test`), and flags anti-patterns such as "tweak the tests as well" or "rewrite the whole project".
+- **Executable examples**: four cross-language samples are run in CI by `verify_examples.py` (`go test` / `python -m unittest` / `cargo test` / `node --test`), so docs cannot drift from code.
+- **English template**: `references/template-en.md` provides the eight-segment master template in English.
 - **Anti-misuse**: "when to downgrade", a common-bad-prompt table, and output-format options.
 
 ## Install (DSH)
@@ -53,21 +65,22 @@ code-refactor-prompts/
 
 ## Usage
 
-Ask the model to "refactor this code" or "give me a refactoring prompt". The skill triggers and returns a structured prompt with mandatory acceptance criteria.
+Ask the model to "refactor this code" or "give me a refactoring prompt". The skill triggers and returns a structured prompt with mandatory acceptance criteria. For English codebases use the [English master template](references/template-en.md).
 
 ## Self-check a prompt
 
 ```bash
 python3 scripts/check_prompt.py my-prompt.txt
+python3 scripts/check_prompt.py my-prompt.txt --lang go   # force the language
 cat my-prompt.txt | python3 scripts/check_prompt.py -
 ```
 
-It checks structure only (segments, verifiable acceptance, guard clauses); semantic quality is still your call.
+It checks structure and known anti-patterns only; semantic quality is still your call. CI self-tests the script with the good / bad fixtures, including a language-mismatch case and an anti-pattern case.
 
 ## CI and release
 
-- **CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): validates skill structure, frontmatter, version alignment, references, links and copy; self-tests the prompt checker; dry-runs packaging.
-- **Release** ([`.github/workflows/release.yml`](.github/workflows/release.yml)): on a `v*` tag it validates, builds `zip` / `tar.gz` / `SHA256SUMS`, and publishes a GitHub Release.
+- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)): validates skill structure, frontmatter, version alignment, references, links and copy; self-tests the prompt checker; executes every runnable example with Node 24; dry-runs packaging.
+- **Release** ([.github/workflows/release.yml](.github/workflows/release.yml)): on a `v*` tag it validates, executes the examples, builds `zip` / `tar.gz` / `SHA256SUMS`, and publishes a GitHub Release.
 
 Release steps: update `CHANGELOG.md` and `metadata.version` → push `main` → `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`.
 

@@ -26,12 +26,29 @@ jobs:
 
       - name: Self-test prompt checker
         run: |
+          set -euo pipefail
           python3 scripts/check_prompt.py scripts/fixtures/good-prompt.txt
-          if python3 scripts/check_prompt.py scripts/fixtures/bad-prompt.txt; then
-            echo "::error::check_prompt.py should reject the bad fixture"
+          python3 scripts/check_prompt.py scripts/fixtures/good-go-prompt.txt
+          for fixture in bad-prompt.txt bad-language-prompt.txt bad-antipattern-prompt.txt; do
+            if python3 scripts/check_prompt.py "scripts/fixtures/$fixture"; then
+              echo "::error::check_prompt.py should reject scripts/fixtures/$fixture"
+              exit 1
+            fi
+          done
+          if python3 scripts/check_prompt.py scripts/fixtures/good-prompt.txt --lang python; then
+            echo "::error::check_prompt.py should reject a mismatched --lang override"
             exit 1
           fi
+          python3 scripts/check_prompt.py scripts/fixtures/good-prompt.txt --json > /dev/null
           echo "prompt checker self-test OK"
+
+      - name: Set up Node.js for the TypeScript example
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Verify examples are executable
+        run: python3 .github/scripts/verify_examples.py --require-all
 
       - name: Dry-run release packaging
         run: |
@@ -42,7 +59,15 @@ jobs:
           python3 - <<'PY'
           import zipfile
           names = zipfile.ZipFile("dist/skill.zip").namelist()
-          assert "code-refactor-prompts/SKILL.md" in names, names[:5]
+          required = [
+              "code-refactor-prompts/SKILL.md",
+              "code-refactor-prompts/references/template-en.md",
+              "code-refactor-prompts/examples/rust-legacy-order-total.md",
+              "code-refactor-prompts/examples/typescript-legacy-characterisation.md",
+              "code-refactor-prompts/scripts/check_prompt.py",
+          ]
+          for entry in required:
+              assert entry in names, f"missing from package: {entry}"
           assert any(n.startswith("code-refactor-prompts/references/") for n in names), "references missing"
           assert not any("/.github/" in n for n in names), "package must not include .github"
           print("package OK:", len(names), "entries")

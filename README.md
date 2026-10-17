@@ -7,7 +7,7 @@
 
 一个用于生成高质量、行为等价、可验收的 **代码重构提示词** 的可复用技能（DSH Skill）。
 
-本技能把「信息密度决定质量上限」的方法论沉淀为可直接加载、可直接粘贴使用的结构化提示词体系：三档策略（A 模糊 / B 结构化 / C 上下文＋验收标准）、八段式骨架、13 个专项变体、分语言定制参考、端到端工作流，并以「行为基线测试 + 可验证验收标准」和 Guard Clauses 作为两道质量防线。
+本技能把「信息密度决定质量上限」的方法论沉淀为可直接加载、可直接粘贴使用的结构化提示词体系：三档策略（A 模糊 / B 结构化 / C 上下文＋验收标准）、八段式骨架、13 个专项变体、分语言定制参考、端到端工作流，并以「行为基线测试 + 可验证验收标准」和 Guard Clauses 作为两道质量防线。样例代码不是纸面内容：Python / Go / Rust / TypeScript 四个样例由 CI 真实执行验证。
 
 ## 结构
 
@@ -23,20 +23,24 @@ code-refactor-prompts/
 │   ├── specialized-prompts.md    13 个专项变体提示词
 │   ├── language-specific.md      分语言定制要点（12 门语言，含 Kotlin / Swift / Ruby / PHP）
 │   ├── workflows.md              端到端工作流（评审 / 基线 / 分批 / 迭代修复）
+│   ├── template-en.md            英文主模板（八段式 + 验收标准 + 输出格式）
 │   └── sources.md                出处与依据（19 条）
 ├── examples/
-│   ├── java-order-calculator-strategy-c.md   实战样例（策略 C 全景）
-│   ├── python-legacy-characterisation.md     实战样例（遗留 Python 行为基线）
-│   └── go-legacy-order-total.md              实战样例（遗留 Go 行为基线 + 差分测试）
+│   ├── java-order-calculator-strategy-c.md        实战样例（策略 C 全景）
+│   ├── python-legacy-characterisation.md          可执行样例（Python 行为基线 + 差分）
+│   ├── go-legacy-order-total.md                   可执行样例（Go 行为基线 + 差分）
+│   ├── rust-legacy-order-total.md                 可执行样例（Rust 行为基线 + 差分）
+│   └── typescript-legacy-characterisation.md      可执行样例（TS 运行时等价的类型化重构）
 ├── scripts/
-│   ├── check_prompt.py           生成提示词的结构自检
+│   ├── check_prompt.py           生成提示词自检（八段 / 可验证 / 语言匹配 / 反模式）
 │   └── fixtures/                 正例 / 反例（CI 自测用）
 └── .github/
     ├── workflows/
-    │   ├── ci.yml                结构校验（push / PR）
+    │   ├── ci.yml                校验 + 自测 + 样例实跑（push / PR）
     │   └── release.yml           推送 v* 标签自动发布
     └── scripts/
         ├── validate_skill.py     结构与文案校验
+        ├── verify_examples.py    从样例 md 提取代码并真实执行
         └── release_notes.py      从 CHANGELOG 生成 Release Notes
 ```
 
@@ -48,7 +52,9 @@ code-refactor-prompts/
 - **Guard Clauses 防废话**：无代码输出 NO_CODE_PROVIDED，无问题输出 NO_REFACTORING_NEEDED。
 - **端到端工作流**：评审驱动重构、遗留代码先锁行为基线、多文件分批验收、AI 输出后的迭代修复。
 - **分语言定制**：Java / Python / JS-TS / React / Go / Rust / C# / C++ / SQL / Kotlin / Swift / Ruby / PHP 的惯用手法、测试命令与红线。
-- **可自检**：`scripts/check_prompt.py` 对生成的提示词做结构自检（八段、可验证验收、守卫）。
+- **可自检**：`scripts/check_prompt.py` 检查八段、可验证验收与守卫；自动识别提示词语言，校验验收命令是否匹配（如 Go 必须写 `go test`），并拦截「顺便改测试」「整体重写」「空泛指标」等反模式。
+- **样例可执行**：4 个跨语言样例由 CI 用 `verify_examples.py` 真实执行（`go test` / `python -m unittest` / `cargo test` / `node --test`），文档与代码不会脱节。
+- **英文模板**：`references/template-en.md` 提供八段式英文主模板，便于英文代码库与评审流程直接使用。
 - **防误用**：给出「何时降档 / 不适用」「常见错误提示词（反例 → 修正）」与输出格式约定。
 
 ## 安装（DSH）
@@ -59,23 +65,24 @@ code-refactor-prompts/
 
 ## 使用
 
-对模型说「重构这段代码」或「给我一个重构提示词」，技能即被触发，产出结构化、强制带验收标准的提示词。
+对模型说「重构这段代码」或「给我一个重构提示词」，技能即被触发，产出结构化、强制带验收标准的提示词。英文代码库可直接套用 [英文主模板](references/template-en.md)。
 
 ## 提示词自检
 
-生成提示词后存成文件，用脚本做结构自检（八段是否齐全、验收是否可验证、守卫是否存在）：
+生成提示词后存成文件，用脚本做结构自检（八段是否齐全、验收是否可验证、验收命令与语言是否匹配、是否存在典型反模式）：
 
 ```bash
 python3 scripts/check_prompt.py my-prompt.txt
+python3 scripts/check_prompt.py my-prompt.txt --lang go   # 显式指定语言
 cat my-prompt.txt | python3 scripts/check_prompt.py -
 ```
 
-只检查结构，不判断语义质量；CI 用 `scripts/fixtures/` 里的正例 / 反例自测该脚本。
+只检查结构与模式，不判断语义质量；CI 用 `scripts/fixtures/` 里的正例 / 反例自测该脚本（含语言不匹配与反模式用例）。
 
 ## CI 与发布
 
-- **CI**（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）：push / PR 时校验技能结构、frontmatter、版本一致性、引用完整性、相对链接与禁止的过程性文案，并 dry-run 一次发布打包。
-- **Release**（[`.github/workflows/release.yml`](.github/workflows/release.yml)）：推送 `v*` 标签后自动校验、打包（`zip` / `tar.gz` / `SHA256SUMS`）并创建 GitHub Release。
+- **CI**（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：push / PR 时校验技能结构、frontmatter、版本一致性、引用完整性、相对链接与禁止的过程性文案；自测提示词检查器；用 Node 24 实际执行全部可执行样例；并 dry-run 一次发布打包。
+- **Release**（[.github/workflows/release.yml](.github/workflows/release.yml)）：推送 `v*` 标签后自动校验、实跑样例、打包（`zip` / `tar.gz` / `SHA256SUMS`）并创建 GitHub Release。
 
 发布流程：
 

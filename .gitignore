@@ -9,6 +9,10 @@ desktop.ini
 # Node
 node_modules/
 
+# Python
+__pycache__/
+*.pyc
+
 # logs
 *.log
 

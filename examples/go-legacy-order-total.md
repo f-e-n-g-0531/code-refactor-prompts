@@ -2,8 +2,15 @@
 
 演示工作流 2 + 工作流 4：先用行为基线测试锁住当前行为（含整数截断这类隐式规则），再做结构化重构，最后用差分测试证明等价。流程见 references/workflows.md。
 
+本样例不是纸面代码：带 `<!-- verify:file=... -->` 标记的代码块会被 .github/scripts/verify_examples.py 还原成临时 Go 模块并实际执行 `go test ./...`，CI 里跑不过就红。
+
+<!-- verify:run
+go test ./...
+-->
+
 ## 1. 遗留代码（无测试、魔数遍地）
 
+<!-- verify:file=orders.go -->
 ```go
 package orders
 
@@ -49,7 +56,7 @@ func Total(o *Order) int {
 }
 ```
 
-**为什么危险**：全程整数除法，每一步都会**截断**（`s/10`、`total/50`、`*8/100`），取整规则完全隐式；满减是 `> 10000` 而非 `>=`，恰好 10000 不触发；`Qty <= 0` 被静默跳过而非报错；VIP 减 300 可以把总价减成**负数**；魔数与 if/else 链散落，改一处极易连带改变行为。
+**为什么危险**：全程整数除法，每一步都会**截断**（`s/10`、`total/50`、`*8/100`），取整规则完全隐式；满减是 `> 10000` 而非 `>= 10000`，恰好 10000 不触发；`Qty <= 0` 被静默跳过而非报错；VIP 减 300 可以把总价减成**负数**；魔数与 if/else 链散落，改一处极易连带改变行为。
 
 ## 2. 第一步：行为基线测试（先跑通，不改代码）
 
@@ -64,6 +71,7 @@ func Total(o *Order) int {
 
 生成的基线测试（`go test` 通过）：
 
+<!-- verify:file=orders_test.go -->
 ```go
 package orders
 
@@ -116,6 +124,7 @@ func TestTotalBaseline(t *testing.T) {
 
 ## 4. 参考重构结果（行为等价）
 
+<!-- verify:file=refactored.go -->
 ```go
 package orders
 
@@ -130,7 +139,9 @@ const (
 	vipAdjustment              = 300
 )
 
-func Total(o *Order) int {
+// TotalRefactored 与 Total 行为等价。真实重构中它就是新的 Total；
+// 样例里保留两个名字共存于同一包，便于第 5 步做差分测试。
+func TotalRefactored(o *Order) int {
 	total := 0
 	for _, it := range o.Items {
 		if it.Qty <= 0 {
@@ -175,13 +186,18 @@ func taxFor(total int, region string) int {
 }
 ```
 
-注意 `applyDiscount` 用 `amount*percent/100` 复现原来的 `amount - amount/10`：对整数而言 `10*s/100 == s/10`，截断点没有变化。
+注意 applyDiscount 用 `amount*percent/100` 复现原来的 `amount - amount/10`：对整数而言 `10*s/100 == s/10`，截断点没有变化。
 
 ## 5. 第三步：差分测试再兜一层
 
 行内单测只覆盖了枚举用例，重构后补一个差分测试，在更多组合上对比新旧实现：
 
+<!-- verify:file=differential_test.go -->
 ```go
+package orders
+
+import "testing"
+
 func TestRefactoredMatchesLegacy(t *testing.T) {
 	orders := []*Order{
 		{},
@@ -202,7 +218,11 @@ func TestRefactoredMatchesLegacy(t *testing.T) {
 
 `go test ./...` 全绿：基线测试锁行为，差分测试扩大覆盖。
 
-## 6. 这个流程为什么可靠
+## 6. 可执行验证
+
+四个代码块分别标注了最终文件名（`orders.go`、`orders_test.go`、`refactored.go`、`differential_test.go`）。CI 用 `python3 .github/scripts/verify_examples.py --require-all` 把它们写入临时模块（缺省 `go.mod` 自动生成）并执行 `go test ./...`；本地可只跑单个样例：`--only go-legacy-order-total`。样例跑不过，CI 直接失败——「实现并验证」不是文案承诺，而是流水线约束。
+
+## 7. 这个流程为什么可靠
 
 - **隐式行为被锁死**：整数截断、`>` 而非 `>=`、Qty <= 0 跳过、VIP 可为负，全部由测试固定。
 - **重构只动结构**：常量具名、职责拆分，计算顺序与截断位置不变。
