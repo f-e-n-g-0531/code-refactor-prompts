@@ -15,9 +15,9 @@ Verifiable examples carry two kinds of HTML markers:
 
 Each marked fenced block is materialised into a fresh temporary directory with
 the minimal scaffolding its toolchain needs (go.mod / Cargo.toml /
-package.json), then the declared shell commands are executed. A non-zero exit
-code fails the script, so "the examples really run" is enforced by CI rather
-than asserted in prose.
+package.json / Example.csproj), then the declared shell commands are executed.
+A non-zero exit code fails the script, so "the examples really run" is enforced
+by CI rather than asserted in prose.
 
 Examples without a verify:run block are illustration-only and are skipped.
 
@@ -42,12 +42,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = ROOT / "examples"
-TIMEOUT_SECONDS = 180
+TIMEOUT_SECONDS = 240
 
 RUN_RE = re.compile(r"<!--\s*verify:run\s*\r?\n(.*?)\r?\n\s*-->", re.S)
 FILE_RE = re.compile(
     r"<!--\s*verify:file=([^\s>]+?)\s*-->\s*\r?\n"
-    r"```[^\r\n]*\r?\n(.*?)\r?\n```[ \t]*(?:\r?\n|$)",
+    r"\x60\x60\x60[^\r\n]*\r?\n(.*?)\r?\n\x60\x60\x60[ \t]*(?:\r?\n|$)",
     re.S,
 )
 
@@ -56,6 +56,7 @@ TOOL_FOR_TOKEN = {
     "cargo": "cargo",
     "node": "node",
     "npm": "npm",
+    "dotnet": "dotnet",
     "python": "python",
     "python3": "python",
     "pytest": "python",
@@ -91,6 +92,20 @@ def parse_example(path: Path) -> tuple[list[tuple[str, str]], list[str]]:
     return files, commands
 
 
+def dotnet_target_framework() -> str:
+    try:
+        result = subprocess.run(
+            ["dotnet", "--version"], capture_output=True, text=True, timeout=60
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:  # pragma: no cover - env dependent
+        raise ExampleError(f"cannot determine .NET SDK version: {exc}") from exc
+    version = result.stdout.strip()
+    major = version.split(".", 1)[0]
+    if result.returncode != 0 or not major.isdigit():
+        raise ExampleError(f"cannot determine .NET SDK version from {version!r}")
+    return f"net{major}.0"
+
+
 def scaffold(directory: Path, names: set[str]) -> None:
     """Add the minimal build metadata a toolchain needs, if not provided."""
     if any(n.endswith(".go") for n in names) and "go.mod" not in names:
@@ -105,6 +120,20 @@ def scaffold(directory: Path, names: set[str]) -> None:
         )
     if any(n.endswith((".ts", ".tsx", ".mts")) for n in names) and "package.json" not in names:
         (directory / "package.json").write_text('{"type": "module"}\n', encoding="utf-8")
+    if any(n.endswith(".cs") for n in names) and not any(n.endswith(".csproj") for n in names):
+        tfm = dotnet_target_framework()
+        (directory / "Example.csproj").write_text(
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\n"
+            "  <PropertyGroup>\n"
+            "    <OutputType>Exe</OutputType>\n"
+            f"    <TargetFramework>{tfm}</TargetFramework>\n"
+            "    <Nullable>disable</Nullable>\n"
+            "    <ImplicitUsings>disable</ImplicitUsings>\n"
+            "    <AssemblyName>example</AssemblyName>\n"
+            "  </PropertyGroup>\n"
+            "</Project>\n",
+            encoding="utf-8",
+        )
 
 
 def command_for_shell(command: str) -> str:
@@ -146,6 +175,9 @@ def verify_example(path: Path) -> tuple[str, list[str]]:
         env = dict(os.environ)
         env["PYTHONIOENCODING"] = "utf-8"
         env["CARGO_TERM_COLOR"] = "never"
+        env["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1"
+        env["DOTNET_NOLOGO"] = "1"
+        env["DOTNET_SKIP_FIRST_TIME_EXPERIENCE"] = "1"
 
         for command in commands:
             shell_command = command_for_shell(command)

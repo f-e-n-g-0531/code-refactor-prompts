@@ -1,0 +1,28 @@
+You are a senior Java engineer.
+
+[GUARD CLAUSES]
+- No code provided: output NO_CODE_PROVIDED and ask for it.
+
+[CONTEXT]
+- Project/module: billing
+- Language and framework: Java 17
+
+[CODE TO REFACTOR]
+```java
+class Billing { }
+```
+
+[HARD CONSTRAINTS]
+1. External behaviour is 100% identical: do not change public API.
+
+[REFACTORING GOALS]
+1. Rewrite the entire project with a cleaner design, and use your favourite best practices.
+2. Also update the tests to match the new structure.
+
+[ACCEPTANCE CRITERIA]
+- Test command: mvn test
+- Cases: empty bill -> 0
+
+[OUTPUT FORMAT]
+1. Problem list;
+2. Unified diff (state the baseline).

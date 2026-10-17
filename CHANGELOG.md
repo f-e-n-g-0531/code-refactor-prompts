@@ -2,6 +2,21 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.4.0] - 2026-10-18
+
+### Added
+
+- 提示词检查器 v3：中英文段落与反模式双语识别；`--strict` 把警告升级为失败（团队 / CI 门禁）；`--skeleton` 输出缺失段落的中英文可填骨架。
+- `examples/csharp-legacy-order-total.md`：可执行 C# 样例——无测试框架时用「退出码断言程序」锁行为基线 + 差分校验（`dotnet run` 实测通过）；`verify_examples.py` 支持 dotnet，按本机 SDK 版本生成 `netX.0` 工程。
+- `.github/scripts/audit_templates.py`：用同一检查器审计 SKILL.md 默认模板与英文模板，模板与检查器不再可能各说各话；CI / Release 均执行。
+- 新夹具：`good-en-prompt.txt`（英文正例）、`bad-en-prompt.txt`（英文反模式）、`weak-prompt.txt`（严格模式用例）；CI 自测覆盖双语、严格模式与骨架输出。
+
+### Changed
+
+- 校验脚本覆盖 C# 样例、审计脚本与全部新夹具，并强制 CI 接入模板审计；发布打包 dry-run 增加新样例断言。
+- SKILL.md、README、README.en.md 同步：检查器双语 / 严格模式 / 骨架生成、模板自审计、C# 样例与 5 个可执行样例。
+- 英文提示词现在可用同一工具自检（此前英文模板无法通过段落识别）。
+
 ## [1.3.0] - 2026-10-18
 
 ### Added

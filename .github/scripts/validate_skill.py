@@ -31,13 +31,18 @@ REQUIRED_FILES = [
     "examples/go-legacy-order-total.md",
     "examples/rust-legacy-order-total.md",
     "examples/typescript-legacy-characterisation.md",
+    "examples/csharp-legacy-order-total.md",
     "scripts/check_prompt.py",
     "scripts/fixtures/good-prompt.txt",
     "scripts/fixtures/good-go-prompt.txt",
+    "scripts/fixtures/good-en-prompt.txt",
     "scripts/fixtures/bad-prompt.txt",
     "scripts/fixtures/bad-language-prompt.txt",
     "scripts/fixtures/bad-antipattern-prompt.txt",
+    "scripts/fixtures/bad-en-prompt.txt",
+    "scripts/fixtures/weak-prompt.txt",
     ".github/scripts/verify_examples.py",
+    ".github/scripts/audit_templates.py",
 ]
 
 # Process / placeholder copy that must never leak into a released skill.
@@ -188,12 +193,17 @@ def check_ci_wiring() -> None:
     ci = read(".github/workflows/ci.yml")
     if "verify_examples.py" not in ci:
         errors.append("ci.yml：未接入 verify_examples.py（可执行样例将不再被验证）")
+    if "audit_templates.py" not in ci:
+        errors.append("ci.yml：未接入 audit_templates.py（模板自审计缺失）")
     for fixture in (
         "good-prompt.txt",
         "good-go-prompt.txt",
         "bad-prompt.txt",
         "bad-language-prompt.txt",
         "bad-antipattern-prompt.txt",
+        "good-en-prompt.txt",
+        "bad-en-prompt.txt",
+        "weak-prompt.txt",
     ):
         if fixture not in ci:
             errors.append(f"ci.yml：未自测 scripts/fixtures/{fixture}")

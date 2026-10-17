@@ -4,12 +4,12 @@ description: Compose high-quality, behavior-preserving code refactoring prompts.
 license: MIT
 metadata:
   author: f-e-n-g-0531
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # 代码重构优化提示词
 
-当用户要求重构/优化代码、索要重构提示词模板，或需要 AI 安全地重构、去坏味道、优化代码时，按本技能产出**可直接粘贴使用的结构化提示词**。默认中文输出；若用户指定语言/框架，把模板中 `{占位符}` 与测试命令填成对应的可用值。英文模板见 `references/template-en.md`；仓库内 Python / Go / Rust / TypeScript 样例均由 CI 实际执行（`verify_examples.py`），可直接照搬其验收标准写法。
+当用户要求重构/优化代码、索要重构提示词模板，或需要 AI 安全地重构、去坏味道、优化代码时，按本技能产出**可直接粘贴使用的结构化提示词**。默认中文输出；若用户指定语言/框架，把模板中 `{占位符}` 与测试命令填成对应的可用值。英文模板见 `references/template-en.md`；检查器支持中英文提示词（`--strict` 严格模式、`--skeleton` 补齐缺失段落）；主模板与英文模板本身也由 `audit_templates.py` 用同一检查器审计；仓库内 Python / Go / Rust / TypeScript / C# 样例均由 CI 实际执行（`verify_examples.py`），可直接照搬其验收标准写法。
 
 ## 核心原则
 
@@ -104,7 +104,7 @@ metadata:
 - **完整文件**：文件较小（< 200 行）或需要直接替换时用；要求给出完整可运行文件并标注文件名。
 - **分步 patch**：大文件 / 多文件重构时按批次给 patch，每批附各自的验收命令。
 - **改动清单（必选）**：无论哪种格式，都要求「每处改动 → 改了什么 → 为什么 → 影响面」表格。
-- **生成后自检**：把提示词存成文件，运行 `python3 scripts/check_prompt.py <file>`，检查八段是否齐全、验收是否可验证、验收命令与语言是否匹配（自动识别，或 `--lang go` 显式指定），并拦截「顺便改测试」「整体重写」等典型反模式。
+- **生成后自检**：把提示词存成文件，运行 `python3 scripts/check_prompt.py <file>`，检查八段是否齐全、验收是否可验证、验收命令与语言是否匹配（自动识别，或 `--lang go` 显式指定），并拦截「顺便改测试」「整体重写」等典型反模式。中英文提示词都支持；团队门禁可用 `--strict`（警告即失败），缺失段落用 `--skeleton` 直接打印可填骨架。
 
 ## 迭代修复（应用后验证）
 

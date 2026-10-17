@@ -24,12 +24,16 @@ jobs:
       - name: Validate structure, frontmatter, links and copy
         run: python3 .github/scripts/validate_skill.py
 
+      - name: Audit embedded prompt templates
+        run: python3 .github/scripts/audit_templates.py
+
       - name: Self-test prompt checker
         run: |
           set -euo pipefail
           python3 scripts/check_prompt.py scripts/fixtures/good-prompt.txt
           python3 scripts/check_prompt.py scripts/fixtures/good-go-prompt.txt
-          for fixture in bad-prompt.txt bad-language-prompt.txt bad-antipattern-prompt.txt; do
+          python3 scripts/check_prompt.py scripts/fixtures/good-en-prompt.txt
+          for fixture in bad-prompt.txt bad-language-prompt.txt bad-antipattern-prompt.txt bad-en-prompt.txt; do
             if python3 scripts/check_prompt.py "scripts/fixtures/$fixture"; then
               echo "::error::check_prompt.py should reject scripts/fixtures/$fixture"
               exit 1
@@ -37,6 +41,16 @@ jobs:
           done
           if python3 scripts/check_prompt.py scripts/fixtures/good-prompt.txt --lang python; then
             echo "::error::check_prompt.py should reject a mismatched --lang override"
+            exit 1
+          fi
+          python3 scripts/check_prompt.py scripts/fixtures/weak-prompt.txt > /dev/null
+          if python3 scripts/check_prompt.py scripts/fixtures/weak-prompt.txt --strict > /dev/null 2>&1; then
+            echo "::error::--strict should turn the weak prompt's warnings into a failure"
+            exit 1
+          fi
+          skeleton="$(python3 scripts/check_prompt.py scripts/fixtures/bad-prompt.txt --skeleton || true)"
+          if ! grep -q "缺失段落骨架" <<< "$skeleton"; then
+            echo "::error::--skeleton did not emit missing-segment skeletons"
             exit 1
           fi
           python3 scripts/check_prompt.py scripts/fixtures/good-prompt.txt --json > /dev/null
@@ -64,6 +78,7 @@ jobs:
               "code-refactor-prompts/references/template-en.md",
               "code-refactor-prompts/examples/rust-legacy-order-total.md",
               "code-refactor-prompts/examples/typescript-legacy-characterisation.md",
+              "code-refactor-prompts/examples/csharp-legacy-order-total.md",
               "code-refactor-prompts/scripts/check_prompt.py",
           ]
           for entry in required:

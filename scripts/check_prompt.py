@@ -2,18 +2,24 @@
 """Structural self-check for a code-refactoring prompt produced with this skill.
 
 This is a heuristic *structure* check, not a judgement of semantic quality.
+Both Chinese and English prompts are supported.
 
 Usage:
     python3 scripts/check_prompt.py <file|-> [--json] [--lang auto|go|rust|python|...]
+                                    [--strict] [--skeleton]
 
 Checks:
-  - the eight required segments are present;
+  - the eight required segments are present (Chinese or English headings);
   - acceptance criteria is verifiable (test command or "input -> expected" cases);
   - the test command matches the language of the prompt (auto-detected from the
     fenced code block, or forced with --lang);
   - "keep behaviour unchanged" is backed by verifiable checks;
   - hard constraints mention behaviour / API / signature compatibility;
-  - known anti-patterns are flagged with a concrete fix.
+  - known anti-patterns are flagged with a concrete fix (Chinese and English).
+
+Options:
+    --strict     treat warnings as failures (CI gating)
+    --skeleton   print fill-in skeletons for the segments that are missing
 
 Exit codes: 0 = pass, 1 = problems found, 2 = usage error.
 """
@@ -26,14 +32,14 @@ import sys
 from pathlib import Path
 
 SEGMENTS = [
-    ("role", "角色", r"角色|你是|作为.{0,12}(工程师|专家|开发)"),
-    ("context", "上下文", r"上下文|背景"),
-    ("code", "待重构代码", r"待重构代码|粘贴代码|代码如下|\x60\x60\x60"),
-    ("constraints", "硬约束", r"硬约束|约束"),
-    ("goals", "重构目标", r"重构目标|重构要求|目标"),
-    ("acceptance", "验收标准", r"验收标准|验收"),
-    ("output", "输出格式", r"输出格式"),
-    ("guard", "守卫", r"前置判断|NO_CODE_PROVIDED|NO_REFACTORING_NEEDED|守卫"),
+    ("role", "角色", r"角色|你是|作为.{0,12}(工程师|专家|开发)|" r"you are|act as|senior .{0,30}(engineer|developer|architect)"),
+    ("context", "上下文", r"上下文|背景|\bcontext\b|\bbackground\b"),
+    ("code", "待重构代码", r"待重构代码|粘贴代码|代码如下|\x60\x60\x60|" r"code to refactor|paste (the |your )?code"),
+    ("constraints", "硬约束", r"硬约束|约束|" r"hard constraints?|must not|do not change"),
+    ("goals", "重构目标", r"重构目标|重构要求|目标|" r"refactoring goals?|\bgoal\b|\bgoals\b"),
+    ("acceptance", "验收标准", r"验收标准|验收|" r"acceptance criteria|acceptance|test command"),
+    ("output", "输出格式", r"输出格式|" r"output format"),
+    ("guard", "守卫", r"前置判断|NO_CODE_PROVIDED|NO_REFACTORING_NEEDED|守卫|" r"guard clauses?|no (code|refactoring) provided"),
 ]
 
 TEST_COMMAND = re.compile(
@@ -42,11 +48,19 @@ TEST_COMMAND = re.compile(
     r"swift\s+test|jest|vitest|junit|tox|nox|node\s+--test)",
     re.I,
 )
-VAGUE = re.compile(r"(保持|维持).{0,6}行为.{0,6}不变|行为(完全)?不变")
+VAGUE = re.compile(
+    r"(保持|维持).{0,6}行为.{0,6}不变|行为(完全)?不变|"
+    r"keep(ing)? (the )?behaviou?r (unchanged|identical)",
+    re.I,
+)
 BEHAVIOUR_CONSTRAINT = re.compile(
     r"(行为|API|签名|异常|返回值|接口).{0,20}(一致|不变|兼容|保持)|"
-    r"(一致|不变|兼容|保持).{0,20}(行为|API|签名|异常|返回值|接口)"
+    r"(一致|不变|兼容|保持).{0,20}(行为|API|签名|异常|返回值|接口)|"
+    r"behaviou?r.{0,30}(identical|unchanged|preserved)|"
+    r"(do not|don't) change.{0,20}(behaviou?r|public api|return values?|exception)",
+    re.I,
 )
+VERIFIABLE_HINT = re.compile(r"期望|\bexpected\b|\bexpectation", re.I)
 
 # Fence language -> canonical language.
 LANGUAGE_FENCES = {
@@ -98,7 +112,7 @@ LANGUAGE_TEST_COMMANDS = {
     "java": r"mvn\s+(test|verify)|\.?/?gradlew?\s+test|gradle\s+test|junit",
     "typescript": r"(npm|yarn|pnpm)\s+(run\s+)?test|jest|vitest|node\s+--test|tsc",
     "javascript": r"(npm|yarn|pnpm)\s+(run\s+)?test|jest|vitest|node\s+--test",
-    "csharp": r"dotnet\s+test|nunit|xunit",
+    "csharp": r"dotnet\s+test|dotnet\s+run|nunit|xunit",
     "kotlin": r"\.?/?gradlew?\s+test|gradle\s+test|kotlin\s+test",
     "swift": r"swift\s+test",
     "ruby": r"rspec|rake\s+test",
@@ -107,53 +121,98 @@ LANGUAGE_TEST_COMMANDS = {
     "sql": r"(EXPLAIN|执行|运行).{0,10}(查询|SQL)|期望(结果|行)|结果集",
 }
 
+LANGUAGE_EXPECTED_COMMAND = {
+    "go": "go test",
+    "rust": "cargo test",
+    "python": "pytest / python -m unittest",
+    "java": "mvn test / gradle test",
+    "typescript": "npm test / node --test",
+    "javascript": "npm test / node --test",
+    "csharp": "dotnet test / dotnet run",
+    "kotlin": "gradle test",
+    "swift": "swift test",
+    "ruby": "rspec",
+    "php": "phpunit",
+    "cpp": "ctest",
+    "sql": "EXPLAIN / 期望结果集",
+}
+
 # (code, regex, severity, message)
 ANTI_PATTERNS = [
     (
         "test-tampering",
-        re.compile(r"顺便.{0,8}(把)?测试.{0,8}(改|删)"),
+        re.compile(r"顺便.{0,8}(把)?测试.{0,8}(改|删)|(also|while you.re at it|feel free to).{0,25}(change|update|modify|adjust).{0,15}tests?", re.I),
         "error",
-        "「顺便改测试」会掩盖行为变更：测试只允许新增基线用例，不允许改既有断言。",
+        "「顺便改测试」会掩盖行为变更：测试只允许新增基线用例，不允许改既有断言。"
+        " Do not change existing tests to match the code; add baseline cases only.",
     ),
     (
         "boil-the-ocean",
-        re.compile(r"(整个|全部|全量|所有).{0,6}(项目|代码库|仓库).{0,6}(重构|重写)"),
+        re.compile(r"(整个|全部|全量|所有).{0,6}(项目|代码库|仓库).{0,6}(重构|重写)|rewrite (the )?(whole|entire) (project|codebase|repo)", re.I),
         "error",
-        "整体重写无法评审与定位失败：按 references/workflows.md 工作流 3 分批，每批独立验收。",
+        "整体重写无法评审与定位失败：按 references/workflows.md 工作流 3 分批，每批独立验收。"
+        " Split into batches with separate acceptance per batch.",
     ),
     (
         "appeal-to-best-practice",
-        re.compile(r"(用你|按你|用).{0,8}(熟悉|喜欢)?.{0,4}最佳实践.{0,6}(重写|重构|改写)"),
+        re.compile(r"(用你|按你|用).{0,8}(熟悉|喜欢)?.{0,4}最佳实践.{0,6}(重写|重构|改写)|(use|apply|follow) (your )?(favorite |favourite )?best practices?", re.I),
         "error",
-        "「最佳实践」是无依据架构改动的入口：限定只改结构不改行为，并禁止新增依赖。",
+        "「最佳实践」是无依据架构改动的入口：限定只改结构不改行为，并禁止新增依赖。"
+        " Constrain the change to structure only and forbid new dependencies.",
     ),
     (
         "unmeasurable-goal",
-        re.compile(r"(性能|质量|可读性|可维护性)(更好|提升|更高|增强)"),
+        re.compile(r"(性能|质量|可读性|可维护性)(更好|提升|更高|更强|增强)|(more readable|cleaner|faster|more maintainable|higher quality|better performance)", re.I),
         "error",
-        "空泛的改进目标不可验收：改为可测量指标（基准命令、阈值、圈复杂度上限）或删除。",
+        "空泛的改进目标不可验收：改为可测量指标（基准命令、阈值、圈复杂度上限）或删除。"
+        " Replace with a measurable metric (benchmark command, threshold, complexity cap).",
     ),
     (
         "scope-creep",
-        re.compile(r"(顺手|顺便).{0,10}(重构|优化|清理)"),
+        re.compile(r"(顺手|顺便).{0,10}(重构|优化|清理)|while you.re at it|also clean up", re.I),
         "warning",
-        "顺手改动会扩大评审面：把范围外改动单列，不放进本次重构。",
+        "顺手改动会扩大评审面：把范围外改动单列，不放进本次重构。"
+        " List out-of-scope changes separately.",
     ),
     (
         "behaviour-change-allowed",
-        re.compile(r"(允许|可以|同意).{0,8}(行为|接口|API).{0,8}(变化|改变|调整)"),
+        re.compile(r"(允许|可以|同意).{0,8}(行为|接口|API).{0,8}(变化|改变|调整)|(behaviou?r|public api|api).{0,20}(may|can|is allowed to) (change|differ)", re.I),
         "warning",
-        "允许行为变化就不是重构：走需求 / 设计变更流程，本技能「行为等价」前提不成立。",
+        "允许行为变化就不是重构：走需求 / 设计变更流程，本技能「行为等价」前提不成立。"
+        " Allowing behaviour change means it is not a refactor.",
     ),
     (
         "hedged-constraint",
-        re.compile(r"(大概|尽量|尽可能|差不多|基本上).{0,10}(保持|不变|一致)"),
+        re.compile(r"(大概|尽量|尽可能|差不多|基本上).{0,10}(保持|不变|一致)|(try to|roughly|more or less|as much as possible).{0,15}(keep|preserve|maintain)", re.I),
         "warning",
-        "模棱两可的约束不可验收：写成明确的测试命令或用例。",
+        "模棱两可的约束不可验收：写成明确的测试命令或用例。"
+        " Replace with an explicit test command or cases.",
     ),
 ]
 
 KNOWN_LANGUAGES = sorted(LANGUAGE_TEST_COMMANDS)
+
+SKELETONS_ZH = {
+    "role": "【角色】\n你是资深 {语言/框架} 工程师，专注在不改变行为的前提下做重构。",
+    "context": "【上下文】\n- 项目/模块：{名称}\n- 语言与框架：{语言 + 版本 + 框架}\n- 这段代码做什么、已知痛点：{业务背景}",
+    "code": "【待重构代码】\n{粘贴代码，使用 fenced code block}",
+    "constraints": "【硬约束（不可违反）】\n1. 外部行为 100% 一致：不改公开 API、返回值、抛出的异常类型；\n2. 不新增第三方依赖；不弱化错误处理、日志、安全校验；\n3. 遵循项目现有编码规范与命名风格。",
+    "goals": "【重构目标】\n0. 先为现有行为生成/补齐「行为基线测试」；\n1. {消除重复 / 降低圈复杂度 / 拆分长函数 / 提取子方法}；\n2. 用具名常量替换魔法数字。",
+    "acceptance": "【验收标准（必填，可验证）】\n- 测试命令：{go test ./... / pytest / cargo test / npm test}\n- 用例：{给定输入 → 期望输出}\n- 若无法运行测试：给出等价验证步骤（命令 + 预期输出）。",
+    "output": "【输出格式】\n1. 问题清单：问题 → 严重度 → 位置；\n2. 统一 diff（声明基线文件）或完整文件；\n3. 改动清单表格；\n4. 风险提示。",
+    "guard": "【前置判断】\n- 未提供代码：输出 NO_CODE_PROVIDED 并索取代码；\n- 代码无明显可改进处：输出 NO_REFACTORING_NEEDED 并说明理由，不要硬改。",
+}
+
+SKELETONS_EN = {
+    "role": "You are a senior {language/framework} engineer specialising in behaviour-preserving refactoring.",
+    "context": "[CONTEXT]\n- Project/module: {name}\n- Language and framework: {language + version + framework}\n- What this code does / known pain points: {business context}",
+    "code": "[CODE TO REFACTOR]\n{paste the code in a fenced block}",
+    "constraints": "[HARD CONSTRAINTS]\n1. External behaviour is 100% identical: do not change public API, return values, or exception types;\n2. No new third-party dependencies; do not weaken error handling, logging, or security checks;\n3. Follow the existing code style and naming conventions.",
+    "goals": "[REFACTORING GOALS]\n0. First generate behaviour-baseline tests that capture current behaviour;\n1. {remove duplication / reduce complexity / split long functions};\n2. Replace magic numbers with named constants.",
+    "acceptance": "[ACCEPTANCE CRITERIA]\n- Test command: {go test ./... / pytest / cargo test / npm test}\n- Cases: {given input -> expected output}\n- If tests cannot run: provide equivalent verification steps.",
+    "output": "[OUTPUT FORMAT]\n1. Problem list: problem -> severity -> location;\n2. Unified diff (state the baseline) or full files;\n3. Change table; 4. Risk notes.",
+    "guard": "[GUARD CLAUSES]\n- No code provided: output NO_CODE_PROVIDED and ask for it;\n- Nothing worth refactoring: output NO_REFACTORING_NEEDED with reasons.",
+}
 
 
 def error(code: str, message: str) -> dict:
@@ -169,6 +228,12 @@ def detect_languages(text: str) -> list[str]:
     return languages
 
 
+def looks_english(text: str) -> bool:
+    cjk = len(re.findall(r"[\u4e00-\u9fff]", text))
+    letters = len(re.findall(r"[A-Za-z]", text))
+    return cjk == 0 and letters > 20
+
+
 def check_language(text: str, languages: list[str], errors: list[dict], warnings: list[dict]) -> None:
     if not languages:
         return
@@ -179,50 +244,34 @@ def check_language(text: str, languages: list[str], errors: list[dict], warnings
 
     generic = TEST_COMMAND.search(text)
     if generic:
-        expected = "、".join(
-            {
-                "go": "go test",
-                "rust": "cargo test",
-                "python": "pytest / python -m unittest",
-                "java": "mvn test / gradle test",
-                "typescript": "npm test / node --test",
-                "javascript": "npm test / node --test",
-                "csharp": "dotnet test",
-                "kotlin": "gradle test",
-                "swift": "swift test",
-                "ruby": "rspec",
-                "php": "phpunit",
-                "cpp": "ctest",
-                "sql": "EXPLAIN / 期望结果集",
-            }.get(lang, "对应测试命令")
-            for lang in languages
-        )
+        expected = "、".join(LANGUAGE_EXPECTED_COMMAND.get(lang, "对应测试命令") for lang in languages)
         errors.append(
             error(
                 "language-mismatch",
                 f"验收命令与语言不匹配：语言为 {labels}，验收里只有「{generic.group(0)}」；"
-                f"应改用 {expected} 之一。",
+                f"应改用 {expected} 之一。 Test command does not match the prompt language.",
             )
         )
     else:
         warnings.append(
             error(
                 "no-test-command",
-                f"未声明可运行测试命令（语言：{labels}）：建议写明对应测试命令，替代仅靠「输入 → 期望」的手工核对。",
+                f"未声明可运行测试命令（语言：{labels}）：建议写明对应测试命令，"
+                f"而不是只靠「输入 → 期望」的手工核对。 No runnable test command declared.",
             )
         )
 
 
-def check(text: str, explicit_language: str = "auto") -> dict:
+def check(text: str, explicit_language: str = "auto", strict: bool = False) -> dict:
     errors: list[dict] = []
     warnings: list[dict] = []
 
-    missing = [label for _key, label, pattern in SEGMENTS if not re.search(pattern, text, re.S)]
+    missing = [label for _key, label, pattern in SEGMENTS if not re.search(pattern, text, re.S | re.I)]
     for label in missing:
         errors.append(error("missing-segment", f"缺少段落：{label}"))
 
     arrows = text.count("→") + text.count("->")
-    verifiable = bool(TEST_COMMAND.search(text) or "期望" in text or arrows >= 2)
+    verifiable = bool(TEST_COMMAND.search(text) or VERIFIABLE_HINT.search(text) or arrows >= 2)
     if not verifiable:
         errors.append(
             error("unverifiable-acceptance", "验收标准不可验证：未发现测试命令，也没有「输入 → 期望输出」用例")
@@ -256,6 +305,16 @@ def check(text: str, explicit_language: str = "auto") -> dict:
             target = errors if severity == "error" else warnings
             target.append(error(code, message))
 
+    skeleton = [
+        {"segment": key, "label": label}
+        for key, label, _pattern in SEGMENTS
+        if label in missing
+    ]
+
+    if strict:
+        errors = errors + [error("strict-" + item["code"], item["message"]) for item in warnings]
+        warnings = []
+
     return {
         "pass": not errors,
         "errors": errors,
@@ -264,7 +323,14 @@ def check(text: str, explicit_language: str = "auto") -> dict:
         "verifiable": verifiable,
         "languages": languages,
         "language_source": language_source,
+        "strict": strict,
+        "skeleton": skeleton,
     }
+
+
+def skeleton_blocks(keys: list[str], english: bool) -> list[str]:
+    table = SKELETONS_EN if english else SKELETONS_ZH
+    return [table[key] for key in keys if key in table]
 
 
 def main() -> int:
@@ -278,6 +344,8 @@ def main() -> int:
         help="force the prompt language (default: auto-detect from fenced code); "
         "one of: auto, " + ", ".join(KNOWN_LANGUAGES),
     )
+    parser.add_argument("--strict", action="store_true", help="treat warnings as failures")
+    parser.add_argument("--skeleton", action="store_true", help="print fill-in skeletons for missing segments")
     args = parser.parse_args()
 
     if not args.source:
@@ -300,10 +368,14 @@ def main() -> int:
             return 2
         text = path.read_text(encoding="utf-8")
 
-    result = check(text, explicit_language=language)
+    result = check(text, explicit_language=language, strict=args.strict)
+    keys = [item["segment"] for item in result["skeleton"]]
+    blocks = skeleton_blocks(keys, looks_english(text)) if args.skeleton else []
 
     if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        payload = dict(result)
+        payload["skeleton"] = blocks
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
     elif result["pass"]:
         language_note = ""
         if result["languages"]:
@@ -317,6 +389,14 @@ def main() -> int:
             print(f"  - {item['message']}")
         for warning in result["warnings"]:
             print(f"  warn: {warning['message']}")
+
+    if blocks:
+        print("\n--- 缺失段落骨架 / missing-segment skeletons ---")
+        for block in blocks:
+            print()
+            print(block)
+    elif args.skeleton:
+        print("\nno missing segments to add.")
 
     return 0 if result["pass"] else 1
 
