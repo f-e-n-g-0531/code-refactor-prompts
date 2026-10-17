@@ -3,7 +3,7 @@ name: code-refactor-prompts
 description: Compose high-quality, behavior-preserving code refactoring prompts. Use when the user asks how to write a refactoring/optimization prompt, wants a reusable prompt template, or needs AI to refactor, de-smell, or optimize code safely. Distill every prompt into role, context, code, hard constraints, refactoring goals, verifiable acceptance criteria, and output format; never let "keep behavior unchanged" go untested.
 license: MIT
 metadata:
-  author: user
+  author: f-e-n-g-0531
   version: "1.0.0"
 ---
 

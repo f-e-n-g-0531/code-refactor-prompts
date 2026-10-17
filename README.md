@@ -2,20 +2,33 @@
 
 一个用于生成高质量、行为等价、可验收的 **代码重构提示词** 的可复用技能（DSH Skill）。
 
-它把「模糊指令 → 结构化指令 → 上下文 + 验收标准」三档策略、六段式骨架，以及性能优化 / 代码坏味道 / 大文件拆分 / 安全加固 / 现代化升级等专项变体，沉淀成一份可直接加载的方法论，并附 13 条出处与依据。
+本技能把「信息密度决定质量上限」的方法论沉淀为可直接加载、可直接粘贴使用的结构化提示词体系：三档策略（A 模糊 / B 结构化 / C 上下文＋验收标准）、八段式骨架、13 个专项变体、分语言定制参考，并以「行为基线测试 + 可验证验收标准」和 Guard Clauses 作为两道质量防线。
 
-## 目录
+## 结构
 
-- SKILL.md — 主技能（核心原则、骨架、三档策略、默认模板）
-- references/specialized-prompts.md — 专项变体（性能/坏味道/拆分/安全/现代化/可测试性/解耦/SOLID/设计模式/技术债/分语言速查等）
-- references/language-specific.md — 分语言定制要点
-- references/sources.md — 出处与依据（19 条）
-- examples/ — 实战样例（策略 C 全景）
+```text
+code-refactor-prompts/
+├── SKILL.md                      主技能（核心原则、八段骨架、三档策略、默认模板）
+├── references/
+│   ├── specialized-prompts.md    13 个专项变体提示词
+│   ├── language-specific.md      分语言定制要点（Java/Python/JS-TS/React/Go/Rust/C#/C++/SQL/Ruby/PHP）
+│   └── sources.md                出处与依据（19 条）
+└── examples/
+    └── java-order-calculator-strategy-c.md   实战样例（策略 C 全景）
+```
+
+## 特性
+
+- **三档策略**：按风险与场景在 A/B/C 三档间选择，关键重构必用「上下文 + 验收标准」。
+- **八段式骨架**：角色、上下文、待重构代码、硬约束、重构目标、验收标准、输出格式、守卫，缺一不可。
+- **行为等价可验收**：用「行为基线测试 + 可验证验收标准」取代空泛的「保持行为不变」。
+- **Guard Clauses 防废话**：无代码输出 NO_CODE_PROVIDED，无问题输出 NO_REFACTORING_NEEDED。
+- **分语言定制**：Java / Python / JS-TS / React / Go / Rust / C# / C++ / SQL / Ruby / PHP 的惯用手法、测试命令与红线。
 
 ## 安装（DSH）
 
-1. 将本仓库放入 DSH 的 skills 目录：~/.dsh/skills/
-2. 目录名必须为 code-refactor-prompts，且包含 SKILL.md
+1. 将本仓库放入 DSH 的 skills 目录：`~/.dsh/skills/`
+2. 目录名必须为 `code-refactor-prompts`，且包含 `SKILL.md`
 3. DSH 会自动发现并注册该技能
 
 ## 使用
@@ -24,4 +37,4 @@
 
 ## 许可
 
-MIT
+[MIT](LICENSE)

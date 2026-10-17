@@ -51,6 +51,7 @@
 ### 9. Microsoft Learn · GitHub Copilot 重构最佳实践
 - 链接：https://learn.microsoft.com/zh-cn/training/modules/implement-code-improvements-using-github-copilot-tools/4-review-code-refactoring-scenarios
 - 说明：官方重构场景与最佳实践（重复代码、大函数拆分等）。
+- 可借鉴：把重构目标与验收标准对齐官方最佳实践，作为通用约束的补充。
 
 ## 四、代码评审 / Review 专用
 
@@ -78,27 +79,32 @@
 
 ## 六、分语言参考
 
-14. flickleafy/prompt-engineering-models · 11-language-stack-specific
+### 14. flickleafy/prompt-engineering-models · 11-language-stack-specific
 - 链接：https://github.com/flickleafy/prompt-engineering-models/tree/main/refactoring/11-language-stack-specific
 - 说明：Python / JS-TS / Java / C# / Go / Rust / Ruby / PHP / React / Angular / Vue / Spring Boot / Django / .NET 共 14 种语言/栈专属重构提示词。
 - 可借鉴：每条用「语言专属重构手法 + before/after 代码」结构，覆盖现代化、类型安全、错误处理。
 
-15. jgamblin/PGP · python/code-refactoring.md（按语言拆分的目录）
+### 15. jgamblin/PGP · python/code-refactoring.md（按语言拆分的目录）
 - 链接：https://github.com/jgamblin/PGP
+- 说明：PGP 仓库内按语言拆分的重构提示词（本条目为 Python 版）。
 - 可借鉴：Python 3.11+ 现代化清单（PEP 484/585/604、match/case、dataclass、f-string、海象、pathlib）+ 语言版 Guard Clauses。
 
-16. golang-patterns（atstaeff/ai-agents）
+### 16. golang-patterns（atstaeff/ai-agents）
 - 链接：https://github.com/atstaeff/ai-agents/blob/main/skills/golang-patterns/SKILL.md
+- 说明：面向 Go 的惯用写法提示词，覆盖仓库/服务分层与错误处理。
 - 可借鉴：仓库模式接口 + 依赖注入 + 显式错误包装；参考 Effective Go / Code Review Comments / Uber Go Style。
 
-17. agent-skill-100-lines-or-less（rust / csharp 等按语言拆分）
+### 17. agent-skill-100-lines-or-less（rust / csharp 等按语言拆分）
 - 链接：https://github.com/kimtth/agent-skill-100-lines-or-less
+- 说明：按语言拆分的精简 skill（rust、csharp 等），每条以「目标 + 技法 + 规则」组织。
 - 可借鉴：rust（enum 令非法态不可表示、Result+?、borrow 优先、clippy 全绿）；csharp（NRT、async 不阻塞、record/LINQ/switch、CancellationToken）。
 
-18. Google Style Guides（官方风格指南）
+### 18. Google Style Guides（官方风格指南）
 - 链接：https://google.github.io/styleguide/
 - 说明：Java / C++ / Python / Go / JS / TS / C# / R 等官方风格，作各语言「遵循现有风格」的默认基准。
+- 可借鉴：作为各语言「遵循现有风格」的默认基准，可直接引用进硬约束。
 
-19. Effective Go / Go Code Review Comments / Uber Go Style Guide
+### 19. Effective Go / Go Code Review Comments / Uber Go Style Guide
 - 链接：https://go.dev/doc/effective_go · https://github.com/golang/go/wiki/CodeReviewComments · https://github.com/uber-go/guide/blob/master/style.md
 - 说明：Go 惯用写法的三大权威参考。
+- 可借鉴：Go 惯用写法的权威基线，作为 Go 档重构目标与红线的主要来源。
