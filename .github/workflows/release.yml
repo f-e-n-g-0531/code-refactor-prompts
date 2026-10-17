@@ -42,6 +42,9 @@ jobs:
       - name: Audit master templates and specialised variants
         run: python3 .github/scripts/audit_templates.py
 
+      - name: Test the prompt tooling
+        run: python3 -m unittest discover -s scripts/tests -p "test_*.py" -v
+
       - name: Set up Node.js for the TypeScript example
         uses: actions/setup-node@v4
         with:

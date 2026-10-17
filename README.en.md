@@ -24,6 +24,7 @@ code-refactor-prompts/
 │   ├── language-specific.md      per-language guidance (12 languages)
 │   ├── workflows.md              end-to-end workflows (review / baseline / batches / repair)
 │   ├── template-en.md            English master template (segments, acceptance, output format)
+│   ├── checklists.md             delivery checklist (prompt / apply / verify / merge)
 │   └── sources.md                19 sources
 ├── examples/
 │   ├── java-order-calculator-strategy-c.md        strategy C walkthrough
@@ -36,7 +37,8 @@ code-refactor-prompts/
 ├── scripts/
 │   ├── check_prompt.py           structural self-check (segments / verifiability / language / anti-patterns / bilingual)
 │   ├── compose_prompt.py         compose a filled, self-checked prompt from a source file
-│   └── fixtures/                 good / bad fixtures and sample sources used by CI
+│   ├── fixtures/                 good / bad fixtures and sample sources used by CI
+│   └── tests/                    regression tests for the tooling (checker / composer / --fix)
 └── .github/
     ├── workflows/
     │   ├── ci.yml                validate + template audit + self-test + execute examples (push / PR)
@@ -56,6 +58,8 @@ code-refactor-prompts/
 - **Guard clauses**: `NO_CODE_PROVIDED` when no code, `NO_REFACTORING_NEEDED` when nothing to fix.
 - **Per-language guidance**: Java, Python, JS/TS, React, Go, Rust, C#, C++, SQL, Kotlin, Swift, Ruby, PHP.
 - **End-to-end workflows**: review-first, legacy baseline, multi-file batching, iterative repair.
+- **Tooling regression tests**: `scripts/tests/` covers the checker, composer, `--fix` loop and the 13-language matrix with 23 tests, run on every CI build.
+- **Delivery checklist**: `references/checklists.md` walks from prompt authoring to merge.
 - **One-command composition**: `scripts/compose_prompt.py --code <file>` builds a filled eight-segment prompt (Chinese or English, auto-detects 13 languages and their test commands) and refuses to emit it unless it passes the shipped checker.
 - **Bilingual self-check**: `scripts/check_prompt.py` validates the eight segments and verifiability in Chinese and English, detects the prompt language and checks that the acceptance command matches it (e.g. Go requires `go test`), and flags anti-patterns such as "tweak the tests as well" or "rewrite the whole project". Adds `--strict` (warnings fail), `--skeleton` (print fill-in skeletons for missing segments) and `--fix` (append missing-segment skeletons to the file and re-check).
 - **Executable examples**: 6 runnable examples are run in CI by `verify_examples.py` (`go test` / `python -m unittest` / `cargo test` / `node --test` / `dotnet run` / SQLite result-set comparison), so docs cannot drift from code.
@@ -83,6 +87,10 @@ python3 scripts/check_prompt.py prompt.txt
 
 Language and default test command are auto-detected for Go / Python / Java / Rust / TypeScript / JavaScript / C# / Kotlin / Swift / Ruby / PHP / C++ / SQL. Composition self-checks the result and exits non-zero instead of emitting a prompt that would fail the checker.
 
+## Delivery checklist
+
+A good prompt is not enough if applying and verifying it go wrong. The four-stage checklist (before sending / before applying / after applying / before merging) lives in [references/checklists.md](references/checklists.md).
+
 ## Self-check a prompt
 
 ```bash
@@ -98,7 +106,7 @@ It checks structure and known anti-patterns only (Chinese and English); semantic
 
 ## CI and release
 
-- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)): validates skill structure, frontmatter, version alignment, references, links and copy; audits master templates and specialised variants; self-tests the prompt checker; executes every runnable example with Node 24; dry-runs packaging.
+- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)): validates skill structure, frontmatter, version alignment, references, links and copy; audits master templates and specialised variants; self-tests the prompt checker; runs the tooling regression suite; executes every runnable example with Node 24; dry-runs packaging.
 - **Release** ([.github/workflows/release.yml](.github/workflows/release.yml)): on a `v*` tag it validates, audits templates, executes the examples, builds `zip` / `tar.gz` / `SHA256SUMS`, and publishes a GitHub Release.
 
 Release steps: update `CHANGELOG.md` and `metadata.version` → push `main` → `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`.

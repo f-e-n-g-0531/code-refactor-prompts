@@ -32,6 +32,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 CHECKER = HERE / "check_prompt.py"
 
+
+class ComposeError(Exception):
+    """Input error that should exit with code 2."""
+
 EXTENSION_LANGUAGES = {
     ".go": "go",
     ".py": "python",
@@ -129,12 +133,12 @@ def load_checker():
 def detect_language(path: str | None, override: str | None) -> str:
     if override:
         if override not in LANGUAGE_LABELS:
-            raise SystemExit(f"unknown --code-lang {override!r}; expected one of: {', '.join(sorted(LANGUAGE_LABELS))}")
+            raise ComposeError(f"unknown --code-lang {override!r}; expected one of: {', '.join(sorted(LANGUAGE_LABELS))}")
         return override
     suffix = Path(path).suffix.lower() if path else ""
     language = EXTENSION_LANGUAGES.get(suffix)
     if not language:
-        raise SystemExit(
+        raise ComposeError(
             f"cannot detect language from {path!r}; pass --code-lang "
             f"({', '.join(sorted(LANGUAGE_LABELS))})"
         )
@@ -278,7 +282,11 @@ def main() -> int:
         if not code.strip():
             print("no code on stdin", file=sys.stderr)
             return 2
-        language = detect_language(None, args.code_lang)
+        try:
+            language = detect_language(None, args.code_lang)
+        except ComposeError as exc:
+            print(exc, file=sys.stderr)
+            return 2
         default_project = "从标准输入读取的代码"
     else:
         source = Path(args.code)
@@ -289,7 +297,11 @@ def main() -> int:
         if not code.strip():
             print(f"code file is empty: {args.code}", file=sys.stderr)
             return 2
-        language = detect_language(args.code, args.code_lang)
+        try:
+            language = detect_language(args.code, args.code_lang)
+        except ComposeError as exc:
+            print(exc, file=sys.stderr)
+            return 2
         default_project = source.stem
 
     goals = args.goal or DEFAULT_GOALS.get(language, DEFAULT_GOALS["default"])

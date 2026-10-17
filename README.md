@@ -24,6 +24,7 @@ code-refactor-prompts/
 │   ├── language-specific.md      分语言定制要点（12 门语言，含 Kotlin / Swift / Ruby / PHP）
 │   ├── workflows.md              端到端工作流（评审 / 基线 / 分批 / 迭代修复）
 │   ├── template-en.md            英文主模板（八段式 + 验收标准 + 输出格式）
+│   ├── checklists.md             落地检查清单（发出 / 应用 / 验收 / 合并）
 │   └── sources.md                出处与依据（19 条）
 ├── examples/
 │   ├── java-order-calculator-strategy-c.md        实战样例（策略 C 全景）
@@ -36,7 +37,8 @@ code-refactor-prompts/
 ├── scripts/
 │   ├── check_prompt.py           生成提示词自检（八段 / 可验证 / 语言匹配 / 反模式 / 双语）
 │   ├── compose_prompt.py         从源码文件一键生成「已填好且自检通过」的提示词
-│   └── fixtures/                 正例 / 反例 / 示例源码（CI 自测用）
+│   ├── fixtures/                 正例 / 反例 / 示例源码（CI 自测用）
+│   └── tests/                    工具链回归测试（检查器 / 生成器 / --fix 闭环）
 └── .github/
     ├── workflows/
     │   ├── ci.yml                校验 + 模板审计 + 自测 + 样例实跑（push / PR）
@@ -56,6 +58,8 @@ code-refactor-prompts/
 - **Guard Clauses 防废话**：无代码输出 NO_CODE_PROVIDED，无问题输出 NO_REFACTORING_NEEDED。
 - **端到端工作流**：评审驱动重构、遗留代码先锁行为基线、多文件分批验收、AI 输出后的迭代修复。
 - **分语言定制**：Java / Python / JS-TS / React / Go / Rust / C# / C++ / SQL / Kotlin / Swift / Ruby / PHP 的惯用手法、测试命令与红线。
+- **工具链回归测试**：`scripts/tests/` 以 23 个用例覆盖检查器、生成器、`--fix` 闭环与 13 语言矩阵，CI 每次运行。
+- **落地清单**：`references/checklists.md` 给出「发提示词前 → 应用前 → 应用后 → 合并前」四段检查清单。
 - **一键生成**：`scripts/compose_prompt.py --code <文件>` 从源码文件生成填好的八段提示词（中 / 英，自动识别 13 种语言与测试命令），生成结果先过检查器，不合规就拒绝输出。
 - **可自检（双语）**：`scripts/check_prompt.py` 检查八段、可验证验收与守卫；自动识别中英文段落与提示词语言，校验验收命令是否匹配（如 Go 必须写 `go test`），拦截「顺便改测试」「整体重写」「空泛指标」等中英文反模式；支持 `--strict`（警告即失败）、`--skeleton`（打印缺失段落骨架）与 `--fix`（把缺失段落骨架追加到文件并复查）。
 - **样例可执行**：6 个跨语言 / 跨领域样例由 CI 用 `verify_examples.py` 真实执行（`go test` / `python -m unittest` / `cargo test` / `node --test` / `dotnet run` / SQLite 结果集对比），文档与代码不会脱节。
@@ -85,6 +89,10 @@ python3 scripts/check_prompt.py prompt.txt
 
 自动识别的语言与默认测试命令覆盖 Go / Python / Java / Rust / TypeScript / JavaScript / C# / Kotlin / Swift / Ruby / PHP / C++ / SQL；生成时已内置自检，若生成的提示词过不了检查器（例如 `--test-command` 与语言不匹配），脚本直接报错退出、不输出不合规提示词。
 
+## 落地检查清单
+
+提示词写得再好，应用与验收环节掉链子也会前功尽弃。四段清单（发出前 / 应用前 / 应用后 / 合并前）见 [references/checklists.md](references/checklists.md)，每条都尽量能用命令核对。
+
 ## 提示词自检
 
 生成提示词后存成文件，用脚本做结构自检（八段是否齐全、验收是否可验证、验收命令与语言是否匹配、是否存在典型反模式；中英文提示词均可）：
@@ -102,7 +110,7 @@ cat my-prompt.txt | python3 scripts/check_prompt.py -
 
 ## CI 与发布
 
-- **CI**（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：push / PR 时校验技能结构、frontmatter、版本一致性、引用完整性、相对链接与禁止的过程性文案；对模板与专项变体做分级审计；自测提示词检查器；用 Node 24 实际执行全部可执行样例；并 dry-run 一次发布打包。
+- **CI**（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：push / PR 时校验技能结构、frontmatter、版本一致性、引用完整性、相对链接与禁止的过程性文案；对模板与专项变体做分级审计；自测提示词检查器；运行工具链回归测试；用 Node 24 实际执行全部可执行样例；并 dry-run 一次发布打包。
 - **Release**（[.github/workflows/release.yml](.github/workflows/release.yml)）：推送 `v*` 标签后自动校验、审计模板、实跑样例、打包（`zip` / `tar.gz` / `SHA256SUMS`）并创建 GitHub Release。
 
 发布流程：

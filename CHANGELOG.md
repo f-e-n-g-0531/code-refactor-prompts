@@ -2,6 +2,22 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.7.0] - 2026-10-18
+
+### Added
+
+- `scripts/tests/`：工具链回归测试套件（23 个用例，标准库 unittest），覆盖 8 个夹具的通过/拒绝矩阵、13 种语言 × 显式/自动识别、语言不匹配、严格模式、缺失段落、 中英文反模式、`--skeleton` / `--json` / stdin / `--fix` 修复闭环，以及生成器的 13 语言、stdin、`--out`、错误测试命令拒绝与退出码。
+- `references/checklists.md`：四段落地检查清单（发提示词前 → 应用 AI 输出前 → 应用后 → 合并前），每条尽量可用命令核对。
+- CI / Release 新增「Test the prompt tooling」步骤，校验脚本强制该步骤存在。
+
+### Fixed
+
+- `compose_prompt.py` 的输入错误（未知扩展名 / 未知 `--code-lang`）现在按约定返回退出码 2，与用法错误语义一致。
+
+### Changed
+
+- SKILL.md、README、README.en.md 同步工具链回归测试、落地清单与发布流程。
+
 ## [1.6.0] - 2026-10-18
 
 ### Added

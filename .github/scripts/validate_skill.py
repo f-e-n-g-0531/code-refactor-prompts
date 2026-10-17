@@ -26,6 +26,7 @@ REQUIRED_FILES = [
     "references/sources.md",
     "references/workflows.md",
     "references/template-en.md",
+    "references/checklists.md",
     "examples/java-order-calculator-strategy-c.md",
     "examples/python-legacy-characterisation.md",
     "examples/go-legacy-order-total.md",
@@ -37,6 +38,8 @@ REQUIRED_FILES = [
     "scripts/compose_prompt.py",
     "scripts/fixtures/sample.go",
     "scripts/fixtures/sample.py",
+    "scripts/tests/test_check_prompt.py",
+    "scripts/tests/test_compose_prompt.py",
     "scripts/fixtures/good-prompt.txt",
     "scripts/fixtures/good-go-prompt.txt",
     "scripts/fixtures/good-en-prompt.txt",
@@ -123,6 +126,7 @@ def check_references_wired() -> None:
         "references/sources.md",
         "references/workflows.md",
         "references/template-en.md",
+        "references/checklists.md",
     ):
         if ref not in skill:
             errors.append(f"SKILL.md：未引用 {ref}")
@@ -216,6 +220,8 @@ def check_ci_wiring() -> None:
         errors.append("ci.yml：未自测 compose_prompt.py（生成器未闭环验证）")
     if "--fix" not in ci:
         errors.append("ci.yml：未自测 check_prompt.py --fix（修复闭环未验证）")
+    if "scripts/tests" not in ci:
+        errors.append("ci.yml：未运行工具链回归测试（scripts/tests）")
     for fixture in (
         "good-prompt.txt",
         "good-go-prompt.txt",

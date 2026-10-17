@@ -72,6 +72,9 @@ jobs:
           python3 scripts/check_prompt.py /tmp/bad-fix.txt
           echo "prompt checker and composer self-test OK"
 
+      - name: Test the prompt tooling
+        run: python3 -m unittest discover -s scripts/tests -p "test_*.py" -v
+
       - name: Set up Node.js for the TypeScript example
         uses: actions/setup-node@v4
         with:
