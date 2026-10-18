@@ -5,8 +5,9 @@ This is a heuristic *structure* check, not a judgement of semantic quality.
 Both Chinese and English prompts are supported.
 
 Usage:
-    python3 scripts/check_prompt.py <file|dir|...> [--json] [--lang auto|go|rust|python|...]
-                                    [--strict] [--skeleton] [--fix] [--include PATTERNS]
+    python3 scripts/check_prompt.py <file|dir|...> [--json] [--format text|github]
+                                    [--lang auto|go|rust|python|...] [--strict]
+                                    [--skeleton] [--fix] [--include PATTERNS]
 
 Multiple paths are supported. A directory is scanned recursively for
 *.prompt / *.prompt.md / *.prompt.txt (override with --include); this is what
@@ -22,6 +23,8 @@ Checks:
   - known anti-patterns are flagged with a concrete fix (Chinese and English).
 
 Options:
+    --format     text (default) or github (workflow-command annotations; cannot be
+                 combined with --json / --fix)
     --strict     treat warnings as failures (CI gating)
     --skeleton   print fill-in skeletons for the segments that are missing
     --fix        append fill-in skeletons for missing segments to the file, then re-check
@@ -341,6 +344,15 @@ def skeleton_blocks(keys: list[str], english: bool) -> list[str]:
 
 
 DEFAULT_INCLUDE_PATTERNS = ("*.prompt", "*.prompt.md", "*.prompt.txt")
+GITHUB_ESCAPE = str.maketrans({"%": "%25", "\r": "%0D", "\n": "%0A"})
+
+
+def github_annotation(level: str, path: str | None, message: str) -> str:
+    """Format a GitHub Actions workflow command (error / warning / notice)."""
+    if path is None:
+        return f"::{level}::{message.translate(GITHUB_ESCAPE)}"
+    clean = path.replace("\\", "/").translate(GITHUB_ESCAPE)
+    return f"::{level} file={clean}::{message.translate(GITHUB_ESCAPE)}"
 
 
 def read_text_file(path: Path) -> str:
@@ -438,6 +450,7 @@ def run_batch(
     fix: bool,
     skeleton_output: bool,
     as_json: bool,
+    github_output: bool = False,
 ) -> int:
     files, missing = collect_sources(sources, include)
     if missing:
@@ -478,12 +491,18 @@ def run_batch(
         else:
             failed += 1
         if not as_json:
-            print(f"{'PASS' if result['pass'] else 'FAIL'} {file}")
-            if not result["pass"]:
+            if github_output:
                 for item in result["errors"]:
-                    print(f"  - {item['message']}")
-            for warning in result["warnings"]:
-                print(f"  warn: {warning['message']}")
+                    print(github_annotation("error", str(file), item["message"]))
+                for warning in result["warnings"]:
+                    print(github_annotation("warning", str(file), warning["message"]))
+            else:
+                print(f"{'PASS' if result['pass'] else 'FAIL'} {file}")
+                if not result["pass"]:
+                    for item in result["errors"]:
+                        print(f"  - {item['message']}")
+                for warning in result["warnings"]:
+                    print(f"  warn: {warning['message']}")
             for block in blocks:
                 print()
                 print(block)
@@ -516,6 +535,12 @@ def main() -> int:
     )
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     parser.add_argument(
+        "--format",
+        choices=["text", "github"],
+        default="text",
+        help="output format: text (default) or github (workflow-command annotations)",
+    )
+    parser.add_argument(
         "--lang",
         default="auto",
         metavar="LANG",
@@ -529,6 +554,12 @@ def main() -> int:
 
     if args.fix and (args.json or args.skeleton):
         print("--fix cannot be combined with --json or --skeleton", file=sys.stderr)
+        return 2
+    if args.format == "github" and args.json:
+        print("--format github cannot be combined with --json", file=sys.stderr)
+        return 2
+    if args.format == "github" and args.fix:
+        print("--format github cannot be combined with --fix", file=sys.stderr)
         return 2
 
     language = args.lang.lower()
@@ -554,6 +585,7 @@ def main() -> int:
             fix=args.fix,
             skeleton_output=args.skeleton,
             as_json=args.json,
+            github_output=args.format == "github",
         )
 
     source = sources[0]
@@ -592,6 +624,16 @@ def main() -> int:
         payload = dict(result)
         payload["skeleton"] = blocks
         print(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif args.format == "github":
+        label = None if source == "-" else source
+        for item in result["errors"]:
+            print(github_annotation("error", label, item["message"]))
+        for item in result["warnings"]:
+            print(github_annotation("warning", label, item["message"]))
+        print(
+            f"{len(result['errors'])} error(s), {len(result['warnings'])} warning(s) in "
+            f"{'(stdin)' if source == '-' else source}"
+        )
     else:
         print_result(result, blocks)
         if args.skeleton and not blocks:

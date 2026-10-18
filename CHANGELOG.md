@@ -2,6 +2,19 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.11.0] - 2026-10-18
+
+### Added
+
+- `check_prompt.py --format github`：输出 GitHub Actions 工作流注解（`::error file=...::…` / `::warning file=...::…`，含 `%` 与换行转义），单文件与批量模式均支持；`--format github` 不能与 `--json` / `--fix` 同用。
+- 根目录 `action.yml`：composite GitHub Action，在 PR 中直接运行检查器并以文件级注解呈现问题；输入 `files` / `include` / `strict`（默认开启），依赖 Linux / macOS runner 的 bash + python3。
+- CI 新增注解输出自测；`validate_skill.py` 校验 Action 定义与 CI 接线，发布打包纳入 `action.yml`。
+- 测试新增 3 个用例（单文件注解、批量注解、与 `--json` / `--fix` 组合拒绝），总数 56 → 59。
+
+### Changed
+
+- README / README.en 增加「PR 门禁（GitHub Actions）」特性、接入示例与结构树；SKILL 工具链说明补充 `--format github`；版本 1.11.0。
+
 ## [1.10.0] - 2026-10-18
 
 ### Added

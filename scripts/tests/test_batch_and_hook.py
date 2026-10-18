@@ -115,6 +115,16 @@ class BatchTest(unittest.TestCase):
         self.assertEqual(strict.returncode, 1)
         self.assertIn("weak.prompt.txt", strict.stdout)
 
+    def test_github_annotations_in_batch(self):
+        self.write("good.prompt.txt", GOOD)
+        self.write("bad.prompt.txt", BAD)
+        result = run_checker(str(self.dir), "--format", "github")
+        self.assertEqual(result.returncode, 1)
+        errors = [line for line in result.stdout.splitlines() if line.startswith("::error")]
+        self.assertTrue(any("bad.prompt.txt" in line for line in errors))
+        self.assertFalse(any("good.prompt.txt" in line for line in errors))
+        self.assertIn("1 passed, 1 failed", result.stdout)
+
     def test_stdin_cannot_be_combined(self):
         target = self.write("good.prompt.txt", GOOD)
         result = run_checker("-", str(target))

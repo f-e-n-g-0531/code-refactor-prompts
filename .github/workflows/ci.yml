@@ -75,6 +75,17 @@ jobs:
           python3 scripts/check_prompt.py /tmp/bad-fix.txt
           echo "prompt checker and composer self-test OK"
 
+      - name: Test GitHub annotation output
+        run: |
+          set -euo pipefail
+          output="$(python3 scripts/check_prompt.py --format github scripts/fixtures/bad-prompt.txt || true)"
+          grep -q '::error file=scripts/fixtures/bad-prompt.txt::' <<< "$output"
+          if python3 scripts/check_prompt.py --format github --json scripts/fixtures/good-prompt.txt; then
+            echo "::error::--format github must not combine with --json"
+            exit 1
+          fi
+          echo "GitHub annotations OK"
+
       - name: Test the prompt tooling
         run: python3 -m unittest discover -s scripts/tests -p "test_*.py" -v
 
@@ -119,7 +130,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           git archive --format=zip --prefix=code-refactor-prompts/ -o dist/skill.zip HEAD \
-            SKILL.md README.md README.en.md CHANGELOG.md LICENSE .gitignore .pre-commit-hooks.yaml pyproject.toml references examples scripts
+            SKILL.md README.md README.en.md CHANGELOG.md LICENSE .gitignore .pre-commit-hooks.yaml pyproject.toml action.yml references examples scripts
           python3 - <<'PY'
           import zipfile
           names = zipfile.ZipFile("dist/skill.zip").namelist()
@@ -133,6 +144,7 @@ jobs:
               "code-refactor-prompts/scripts/check_prompt.py",
               "code-refactor-prompts/.pre-commit-hooks.yaml",
               "code-refactor-prompts/pyproject.toml",
+              "code-refactor-prompts/action.yml",
           ]
           for entry in required:
               assert entry in names, f"missing from package: {entry}"

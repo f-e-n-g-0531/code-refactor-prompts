@@ -22,6 +22,7 @@ REQUIRED_FILES = [
     "LICENSE",
     ".gitignore",
     ".pre-commit-hooks.yaml",
+    "action.yml",
     "pyproject.toml",
     "references/specialized-prompts.md",
     "references/language-specific.md",
@@ -321,6 +322,8 @@ def check_ci_wiring() -> None:
         errors.append("ci.yml：未做 pre-commit 端到端测试（try-repo）")
     if "check_sources.py" not in ci:
         errors.append("ci.yml：未运行离线出处链接检查（check_sources.py）")
+    if "--format github" not in ci:
+        errors.append("ci.yml：未自测 GitHub 注解输出（--format github）")
     release = read(".github/workflows/release.yml")
     if "pre-commit try-repo" not in release:
         errors.append("release.yml：未做 pre-commit 端到端测试（try-repo）")
@@ -364,6 +367,26 @@ def check_precommit_hook() -> None:
             errors.append(f"{workflow}：发布打包未包含 pyproject.toml（pre-commit 安装依赖它）")
 
 
+def check_action() -> None:
+    """The composite GitHub Action must ship and call the checker with annotations."""
+    rel = "action.yml"
+    if not (ROOT / rel).is_file():
+        errors.append(f"缺少 {rel}（PR 门禁）")
+        return
+    text = read(rel)
+    if "using: composite" not in text:
+        errors.append(f"{rel}：runs.using 应为 composite")
+    if "scripts/check_prompt.py" not in text:
+        errors.append(f"{rel}：未调用 scripts/check_prompt.py")
+    if "--format github" not in text:
+        errors.append(f"{rel}：未使用 --format github 注解输出")
+    if "GITHUB_ACTION_PATH" not in text:
+        errors.append(f"{rel}：应通过 GITHUB_ACTION_PATH 定位脚本")
+    for workflow in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
+        if "action.yml" not in read(workflow):
+            errors.append(f"{workflow}：发布打包未包含 action.yml")
+
+
 def check_link_workflow() -> None:
     """The scheduled online link check must exist and request every URL."""
     rel = ".github/workflows/link-check.yml"
@@ -388,6 +411,7 @@ def main() -> int:
     check_test_counts()
     check_markdown_structure()
     check_ci_wiring()
+    check_action()
     check_link_workflow()
     check_precommit_hook()
     check_copy()

@@ -1,0 +1,42 @@
+name: Check refactoring prompts
+description: Structurally check code-refactoring prompts and annotate problems in the pull request.
+author: f-e-n-g-0531
+
+branding:
+  icon: check-circle
+  color: blue
+
+inputs:
+  files:
+    description: File or directory to check; directories are scanned recursively for *.prompt, *.prompt.md and *.prompt.txt.
+    required: false
+    default: "."
+  include:
+    description: Comma-separated glob patterns for directory scans.
+    required: false
+    default: "*.prompt,*.prompt.md,*.prompt.txt"
+  strict:
+    description: Treat warnings as failures (true / false).
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Check prompts
+      shell: bash
+      env:
+        INPUT_FILES: ${{ inputs.files }}
+        INPUT_INCLUDE: ${{ inputs.include }}
+        INPUT_STRICT: ${{ inputs.strict }}
+      run: |
+        set -euo pipefail
+        args=(--format github)
+        if [ "${INPUT_STRICT}" = "true" ]; then
+          args+=(--strict)
+        fi
+        if [ -n "${INPUT_INCLUDE}" ]; then
+          args+=(--include "${INPUT_INCLUDE}")
+        fi
+        # shellcheck disable=SC2086 -- multiple paths are intentional
+        python3 "${GITHUB_ACTION_PATH}/scripts/check_prompt.py" "${args[@]}" ${INPUT_FILES}

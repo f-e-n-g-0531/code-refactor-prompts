@@ -21,6 +21,7 @@ code-refactor-prompts/
 ├── .gitignore
 ├── .pre-commit-hooks.yaml        pre-commit 钩子定义（安装 console script 后批量检查）
 ├── pyproject.toml                打包元数据（console script：code-refactor-prompt-check）
+├── action.yml                    GitHub Action（PR 门禁 + 文件级注解）
 ├── references/
 │   ├── specialized-prompts.md    13 个专项变体提示词
 │   ├── language-specific.md      分语言定制要点（12 门语言 + React 专题；含 Kotlin / Swift / Ruby / PHP）
@@ -63,7 +64,8 @@ code-refactor-prompts/
 - **端到端工作流**：评审驱动重构、遗留代码先锁行为基线、多文件分批验收、AI 输出后的迭代修复。
 - **分语言定制**：Java / Python / JS-TS / React / Go / Rust / C# / C++ / SQL / Kotlin / Swift / Ruby / PHP 的惯用手法、测试命令与红线。
 - **批量与门禁**：`check_prompt.py` 支持多文件 / 目录批量检查（逐文件 PASS/FAIL + 汇总），附 `.pre-commit-hooks.yaml`，pre-commit / CI 可直接接入。
-- **工具链回归测试**：`scripts/tests/` 以 56 个用例覆盖检查器、生成器（含 C 档）、`--fix` 闭环、出处链接巡检、13 语言矩阵与校验脚本自身，CI 每次运行。
+- **PR 门禁（GitHub Actions）**：根目录 `action.yml` 在 PR 中运行检查器，并以 `--format github` 将问题注解到对应文件，无需额外脚本。
+- **工具链回归测试**：`scripts/tests/` 以 59 个用例覆盖检查器、生成器（含 C 档）、`--fix` 闭环、出处链接巡检、13 语言矩阵与校验脚本自身，CI 每次运行。
 - **落地清单**：`references/checklists.md` 给出「发提示词前 → 应用前 → 应用后 → 合并前」四段检查清单。
 - **一键生成**：`scripts/compose_prompt.py --code <文件>` 从源码文件生成填好的八段提示词（中 / 英，自动识别 13 种语言与测试命令）；同时提供 `--rule`（业务规则）与 `--case`（验收用例）时直接生成完整 C 档；生成结果先过检查器，不合规就拒绝输出。
 - **可自检（双语）**：`scripts/check_prompt.py` 检查八段、可验证验收与守卫；自动识别中英文段落与提示词语言，校验验收命令是否匹配（如 Go 必须写 `go test`），拦截「顺便改测试」「整体重写」「空泛指标」等中英文反模式；支持 `--strict`（警告即失败）、`--skeleton`（打印缺失段落骨架）与 `--fix`（把缺失段落骨架追加到文件并复查）。
@@ -143,16 +145,36 @@ pre-commit install
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.10.0
+    rev: v1.11.0
     hooks:
       - id: code-refactor-prompt-check
 ```
 
 钩子通过 `pyproject.toml` 暴露 `code-refactor-prompt-check` console script，pre-commit 以 `language: python` 安装后直接调用；匹配 `\.prompt(\.(md|txt))?$` 的暂存文件会被批量交给检查器（`--strict`），有失败即阻止提交。本地试用钩子（无需先发 tag）：`pre-commit try-repo . --ref HEAD --files my.prompt.txt`。
 
+## GitHub Actions（PR 门禁）
+
+根目录 `action.yml` 可直接在 PR 中运行检查器，并用 `--format github` 把问题注解到对应文件：
+
+```yaml
+name: Prompts
+on: [pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: f-e-n-g-0531/code-refactor-prompts@v1.11.0
+        with:
+          files: prompts/     # 文件或目录；目录默认递归匹配 *.prompt / *.prompt.md / *.prompt.txt
+          strict: true        # 警告也算失败
+```
+
+需要 Linux / macOS runner（依赖 bash 与 python3）；本地等价命令：`python3 scripts/check_prompt.py --format github prompts/ --strict`。
+
 ## CI 与发布
 
-- **CI**（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：push 到 main / PR 时校验技能结构、frontmatter、版本一致性、引用完整性、Markdown 文档结构（重复标题）与用例数、相对链接及禁止的过程性文案；对模板与专项变体做分级审计；自测提示词检查器；运行工具链回归测试；离线检查出处链接（`check_sources.py`）；安装并测试打包后的 pre-commit console script；用 `pre-commit try-repo` 做钩子端到端验证（好提示词通过、坏提示词阻断）；配置 Node 24 并实际执行全部 6 个可执行样例（go test / python unittest / cargo test / node --test / dotnet run / SQLite 结果集对比）；并 dry-run 一次发布打包。
+- **CI**（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：push 到 main / PR 时校验技能结构、frontmatter、版本一致性、引用完整性、Markdown 文档结构（重复标题）与用例数、相对链接及禁止的过程性文案；对模板与专项变体做分级审计；自测提示词检查器；运行工具链回归测试；离线检查出处链接（`check_sources.py`）；自测 GitHub 注解输出（`--format github`）；安装并测试打包后的 pre-commit console script；用 `pre-commit try-repo` 做钩子端到端验证（好提示词通过、坏提示词阻断）；配置 Node 24 并实际执行全部 6 个可执行样例（go test / python unittest / cargo test / node --test / dotnet run / SQLite 结果集对比）；并 dry-run 一次发布打包。
 - **Link check**（[.github/workflows/link-check.yml](.github/workflows/link-check.yml)）：每周一 03:17 UTC（可手动触发）在线请求 `references/sources.md` 的全部链接，失败即报红。
 - **Release**（[.github/workflows/release.yml](.github/workflows/release.yml)）：推送 `v*` 标签后自动校验、审计模板、实跑样例、打包（`zip` / `tar.gz` / `SHA256SUMS`）并创建 GitHub Release。
 

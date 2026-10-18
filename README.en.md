@@ -21,6 +21,7 @@ code-refactor-prompts/
 ├── .gitignore
 ├── .pre-commit-hooks.yaml        pre-commit hook definition (batch check via console script)
 ├── pyproject.toml                packaging metadata (console script: code-refactor-prompt-check)
+├── action.yml                    GitHub Action (PR gate + file-level annotations)
 ├── references/
 │   ├── specialized-prompts.md    13 specialised prompt variants
 │   ├── language-specific.md      per-language guidance (12 languages + a React section)
@@ -63,7 +64,8 @@ code-refactor-prompts/
 - **Per-language guidance**: Java, Python, JS/TS, React, Go, Rust, C#, C++, SQL, Kotlin, Swift, Ruby, PHP.
 - **End-to-end workflows**: review-first, legacy baseline, multi-file batching, iterative repair.
 - **Batch checks and commit gating**: `check_prompt.py` accepts multiple files and directories (per-file PASS/FAIL plus a summary); `.pre-commit-hooks.yaml` lets pre-commit and CI gate on it directly.
-- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 56 tests, run on every CI build.
+- **PR gate (GitHub Actions)**: the root `action.yml` checks prompts in a pull request and annotates findings on the matching files via `--format github`, with no extra scripts.
+- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 59 tests, run on every CI build.
 - **Delivery checklist**: `references/checklists.md` walks from prompt authoring to merge.
 - **One-command composition**: `scripts/compose_prompt.py --code <file>` builds a filled eight-segment prompt (Chinese or English, auto-detects 13 languages and their test commands); supplying both `--rule` (business rules) and `--case` (acceptance cases) produces a full tier-C prompt, and the result is refused unless it passes the shipped checker.
 - **Bilingual self-check**: `scripts/check_prompt.py` validates the eight segments and verifiability in Chinese and English, detects the prompt language and checks that the acceptance command matches it (e.g. Go requires `go test`), and flags anti-patterns such as "tweak the tests as well" or "rewrite the whole project". Adds `--strict` (warnings fail), `--skeleton` (print fill-in skeletons for missing segments) and `--fix` (append missing-segment skeletons to the file and re-check).
@@ -142,16 +144,36 @@ Then in `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.10.0
+    rev: v1.11.0
     hooks:
       - id: code-refactor-prompt-check
 ```
 
 The repo exposes a `code-refactor-prompt-check` console script via `pyproject.toml`, so pre-commit's `language: python` installs the hook and staged files matching `\.prompt(\.(md|txt))?$` are checked in `--strict` mode; any failure blocks the commit. To try the hook locally without publishing a tag: `pre-commit try-repo . --ref HEAD --files my.prompt.txt`.
 
+## GitHub Actions (PR gate)
+
+The root `action.yml` runs the checker in a pull request and annotates findings on the matching files with `--format github`:
+
+```yaml
+name: Prompts
+on: [pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: f-e-n-g-0531/code-refactor-prompts@v1.11.0
+        with:
+          files: prompts/     # file or directory; directories scan *.prompt / *.prompt.md / *.prompt.txt
+          strict: true        # warnings fail too
+```
+
+Requires a Linux / macOS runner (bash + python3). Local equivalent: `python3 scripts/check_prompt.py --format github prompts/ --strict`.
+
 ## CI and release
 
-- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)): validates skill structure, frontmatter, version alignment, references, Markdown structure (duplicate headings) and test counts, links and copy; audits master templates and specialised variants; self-tests the prompt checker; runs the tooling regression suite; checks source links offline (`check_sources.py`); installs and tests the packaged pre-commit console script; runs the hook end to end with `pre-commit try-repo` (good prompt passes, bad prompt blocks); sets up Node 24 and executes all 6 runnable examples (go test / python unittest / cargo test / node --test / dotnet run / SQLite comparison); dry-runs packaging.
+- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)): validates skill structure, frontmatter, version alignment, references, Markdown structure (duplicate headings) and test counts, links and copy; audits master templates and specialised variants; self-tests the prompt checker; runs the tooling regression suite; checks source links offline (`check_sources.py`); self-tests GitHub annotation output (`--format github`); installs and tests the packaged pre-commit console script; runs the hook end to end with `pre-commit try-repo` (good prompt passes, bad prompt blocks); sets up Node 24 and executes all 6 runnable examples (go test / python unittest / cargo test / node --test / dotnet run / SQLite comparison); dry-runs packaging.
 - **Link check** ([.github/workflows/link-check.yml](.github/workflows/link-check.yml)): every Monday 03:17 UTC (or manually) it requests every URL in `references/sources.md` and fails the run when a link is broken.
 - **Release** ([.github/workflows/release.yml](.github/workflows/release.yml)): on a `v*` tag it validates, audits templates, executes the examples, builds `zip` / `tar.gz` / `SHA256SUMS`, and publishes a GitHub Release.
 

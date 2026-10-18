@@ -260,6 +260,18 @@ class CliTest(unittest.TestCase):
         result = run_checker("-", input_text=text)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_github_format_annotations(self):
+        result = run_checker("--format", "github", str(FIXTURES / "bad-prompt.txt"))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("::error file=", result.stdout)
+        self.assertIn("::warning file=", result.stdout)
+        self.assertIn("缺少段落", result.stdout)
+
+    def test_github_format_rejects_json_and_fix(self):
+        fixture = str(FIXTURES / "good-prompt.txt")
+        self.assertEqual(run_checker("--format", "github", "--json", fixture).returncode, 2)
+        self.assertEqual(run_checker("--format", "github", "--fix", fixture).returncode, 2)
+
     def test_non_utf8_prompt_is_usage_error(self):
         with tempfile.TemporaryDirectory() as raw:
             target = Path(raw) / "ansi.prompt.txt"

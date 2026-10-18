@@ -79,9 +79,9 @@ jobs:
           TAG="${{ steps.meta.outputs.tag }}"
           PREFIX="code-refactor-prompts"
           git archive --format=zip --prefix="${PREFIX}/" -o "dist/${PREFIX}-${TAG}.zip" HEAD \
-            SKILL.md README.md README.en.md CHANGELOG.md LICENSE .gitignore .pre-commit-hooks.yaml pyproject.toml references examples scripts
+            SKILL.md README.md README.en.md CHANGELOG.md LICENSE .gitignore .pre-commit-hooks.yaml pyproject.toml action.yml references examples scripts
           git archive --format=tar.gz --prefix="${PREFIX}/" -o "dist/${PREFIX}-${TAG}.tar.gz" HEAD \
-            SKILL.md README.md README.en.md CHANGELOG.md LICENSE .gitignore .pre-commit-hooks.yaml pyproject.toml references examples scripts
+            SKILL.md README.md README.en.md CHANGELOG.md LICENSE .gitignore .pre-commit-hooks.yaml pyproject.toml action.yml references examples scripts
           ( cd dist && sha256sum *.zip *.tar.gz > SHA256SUMS.txt )
           ls -lh dist
 
