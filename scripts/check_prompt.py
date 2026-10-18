@@ -38,8 +38,10 @@ Exit codes: 0 = pass, 1 = problems found, 2 = usage error.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -468,6 +470,23 @@ def print_result(result: dict, blocks: list[str] | None = None) -> None:
             print(block)
 
 
+def changed_prompt_files(base: str, include: str) -> list[str]:
+    """Return prompt files changed since base (git diff base...HEAD), filtered by include."""
+    patterns = [item.strip() for item in include.split(",") if item.strip()]
+    result = subprocess.run(
+        ["git", "diff", "--name-only", "--diff-filter=ACMR", f"{base}...HEAD"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or f"git diff exited with {result.returncode}"
+        raise RuntimeError(detail)
+    files = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return [name for name in files if any(fnmatch.fnmatch(name, pattern) for pattern in patterns)]
+
+
 def collect_sources(sources: list[str], include: str) -> tuple[list[Path], list[str]]:
     patterns = [item.strip() for item in include.split(",") if item.strip()]
     files: list[Path] = []
@@ -584,7 +603,13 @@ def main() -> int:
             stream.reconfigure(encoding="utf-8")
 
     parser = argparse.ArgumentParser(description="Structural self-check for refactoring prompts.")
-    parser.add_argument("sources", nargs="+", help="prompt files, '-' for stdin, or directories to scan")
+    parser.add_argument("sources", nargs="*", help="prompt files, '-' for stdin, or directories to scan")
+    parser.add_argument(
+        "--changed",
+        metavar="BASE",
+        help="check only prompt files changed since BASE (git diff BASE...HEAD); "
+        "cannot be combined with explicit sources",
+    )
     parser.add_argument(
         "--include",
         default=",".join(DEFAULT_INCLUDE_PATTERNS),
@@ -627,7 +652,33 @@ def main() -> int:
         )
         return 2
 
+    if args.changed and args.sources:
+        print("--changed cannot be combined with explicit sources", file=sys.stderr)
+        return 2
+    if args.changed:
+        try:
+            changed = changed_prompt_files(args.changed, args.include)
+        except (RuntimeError, OSError) as exc:
+            print(f"cannot determine changed files: {exc}", file=sys.stderr)
+            return 2
+        if not changed:
+            print("no changed prompt files; nothing to check.")
+            return 0
+        return run_batch(
+            changed,
+            include=args.include,
+            language=language,
+            strict=args.strict,
+            fix=args.fix,
+            skeleton_output=args.skeleton,
+            as_json=args.json,
+            github_output=args.format == "github",
+        )
+
     sources = args.sources
+    if not sources:
+        print("no prompt sources given (pass files/directories or --changed BASE)", file=sys.stderr)
+        return 2
     if "-" in sources and len(sources) > 1:
         print("stdin ('-') cannot be combined with other sources", file=sys.stderr)
         return 2

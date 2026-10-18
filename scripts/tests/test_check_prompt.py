@@ -131,7 +131,7 @@ EN_ANTI_PATTERNS = [
 ]
 
 
-def run_checker(*args, input_text=None):
+def run_checker(*args, input_text=None, cwd=None):
     return subprocess.run(
         [sys.executable, str(CHECKER), *args],
         input=input_text,
@@ -139,6 +139,7 @@ def run_checker(*args, input_text=None):
         text=True,
         encoding="utf-8",
         errors="replace",
+        cwd=cwd,
         env={**os.environ, "PYTHONIOENCODING": "utf-8"},
     )
 
@@ -275,6 +276,12 @@ class CliTest(unittest.TestCase):
         self.assertEqual(
             run_checker(str(FIXTURES / "good-prompt.txt"), "--fix", "--json").returncode, 2
         )
+        self.assertEqual(
+            run_checker(
+                "--changed", "HEAD", str(FIXTURES / "good-prompt.txt")
+            ).returncode,
+            2,
+        )
 
     def test_fix_repairs_a_broken_prompt(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -286,6 +293,57 @@ class CliTest(unittest.TestCase):
             content = target.read_text(encoding="utf-8")
             self.assertIn("check_prompt.py --fix", content)
             self.assertEqual(run_checker(str(target)).returncode, 0)
+
+    def _git(self, repo, *args):
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+    def _init_repo(self, raw):
+        repo = Path(raw)
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        self._git(repo, "config", "user.email", "test@example.com")
+        self._git(repo, "config", "user.name", "test")
+        return repo
+
+    def test_changed_mode_only_checks_changed_files(self):
+        with tempfile.TemporaryDirectory() as raw:
+            repo = self._init_repo(raw)
+            (repo / "good.prompt.txt").write_text(
+                (FIXTURES / "good-prompt.txt").read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            self._git(repo, "add", "-A")
+            self._git(repo, "commit", "-qm", "base")
+            (repo / "bad.prompt.txt").write_text(
+                (FIXTURES / "bad-prompt.txt").read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            self._git(repo, "add", "-A")
+            self._git(repo, "commit", "-qm", "add bad")
+            result = run_checker("--changed", "HEAD~1", cwd=repo)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("bad.prompt.txt", result.stdout)
+            self.assertNotIn("good.prompt.txt", result.stdout)
+
+    def test_changed_mode_with_no_matching_changes_is_green(self):
+        with tempfile.TemporaryDirectory() as raw:
+            repo = self._init_repo(raw)
+            (repo / "notes.txt").write_text("hello\n", encoding="utf-8")
+            self._git(repo, "add", "-A")
+            self._git(repo, "commit", "-qm", "base")
+            (repo / "notes.txt").write_text("hello again\n", encoding="utf-8")
+            self._git(repo, "add", "-A")
+            self._git(repo, "commit", "-qm", "change")
+            result = run_checker("--changed", "HEAD~1", cwd=repo)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("no changed prompt files", result.stdout)
+
+    def test_changed_mode_rejects_unknown_base(self):
+        with tempfile.TemporaryDirectory() as raw:
+            repo = self._init_repo(raw)
+            (repo / "notes.txt").write_text("x\n", encoding="utf-8")
+            self._git(repo, "add", "-A")
+            self._git(repo, "commit", "-qm", "base")
+            result = run_checker("--changed", "does-not-exist", cwd=repo)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("cannot determine changed files", result.stderr)
 
     def test_stdin_input(self):
         text = (FIXTURES / "good-prompt.txt").read_text(encoding="utf-8")

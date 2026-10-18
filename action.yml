@@ -19,6 +19,10 @@ inputs:
     description: Treat warnings as failures (true / false).
     required: false
     default: "true"
+  changed-only:
+    description: Only check prompt files changed since the pull request base (requires actions/checkout with fetch-depth 0).
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -29,6 +33,8 @@ runs:
         INPUT_FILES: ${{ inputs.files }}
         INPUT_INCLUDE: ${{ inputs.include }}
         INPUT_STRICT: ${{ inputs.strict }}
+        INPUT_CHANGED_ONLY: ${{ inputs.changed-only }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
       run: |
         set -euo pipefail
         args=(--format github)
@@ -38,5 +44,13 @@ runs:
         if [ -n "${INPUT_INCLUDE}" ]; then
           args+=(--include "${INPUT_INCLUDE}")
         fi
-        # shellcheck disable=SC2086 -- multiple paths are intentional
-        python3 "${GITHUB_ACTION_PATH}/scripts/check_prompt.py" "${args[@]}" ${INPUT_FILES}
+        if [ "${INPUT_CHANGED_ONLY}" = "true" ]; then
+          base="${BASE_SHA:-}"
+          case "$base" in
+            "" | 0000000000000000000000000000000000000000) base="HEAD^" ;;
+          esac
+          python3 "${GITHUB_ACTION_PATH}/scripts/check_prompt.py" "${args[@]}" --changed "$base"
+        else
+          # shellcheck disable=SC2086 -- multiple paths are intentional
+          python3 "${GITHUB_ACTION_PATH}/scripts/check_prompt.py" "${args[@]}" ${INPUT_FILES}
+        fi

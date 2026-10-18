@@ -142,6 +142,11 @@ class PreCommitHookTest(unittest.TestCase):
         self.assertIn('code-refactor-prompt-check = "check_prompt:main"', pyproject)
         self.assertIn('py-modules = ["check_prompt"]', pyproject)
 
+    def test_action_definition_supports_changed_only(self):
+        action = (ROOT / "action.yml").read_text(encoding="utf-8")
+        for marker in ("changed-only", "BASE_SHA", "--changed"):
+            self.assertIn(marker, action)
+
     def test_hook_contract_accepts_passing_files(self):
         files = [str(FIXTURES / "good-prompt.txt"), str(FIXTURES / "good-en-prompt.txt")]
         result = run_checker("--strict", *files)

@@ -242,6 +242,13 @@ def check_version_refs(version: str | None) -> None:
         for got in found:
             if got != version:
                 errors.append(f"{rel}：rev: v{got} 与 SKILL.md 的 metadata.version {version} 不一致")
+    for rel in ("README.md", "README.en.md"):
+        action_versions = re.findall(r"code-refactor-prompts@v(\d+\.\d+\.\d+)", read(rel))
+        if not action_versions:
+            errors.append(f"{rel}：缺少 GitHub Action 的 @v{version} 示例引用")
+        for got in action_versions:
+            if got != version:
+                errors.append(f"{rel}：Action 示例 @v{got} 与 metadata.version {version} 不一致")
     pyproject = read("pyproject.toml")
     declared = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.M)
     if not declared:
@@ -382,6 +389,9 @@ def check_action() -> None:
         errors.append(f"{rel}：未使用 --format github 注解输出")
     if "GITHUB_ACTION_PATH" not in text:
         errors.append(f"{rel}：应通过 GITHUB_ACTION_PATH 定位脚本")
+    for marker in ("changed-only", "BASE_SHA", "--changed"):
+        if marker not in text:
+            errors.append(f"{rel}：缺少 changed-only 模式接线（{marker}）")
     for workflow in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
         if "action.yml" not in read(workflow):
             errors.append(f"{workflow}：发布打包未包含 action.yml")

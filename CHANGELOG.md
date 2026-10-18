@@ -2,6 +2,18 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.13.0] - 2026-10-18
+
+### Added
+
+- `check_prompt.py --changed BASE`：只检查自 `BASE` 以来变更的提示词（`git diff BASE...HEAD`，按 `--include` 过滤）；无匹配变更时输出提示并以 0 退出；不能与显式来源同用。
+- GitHub Action 新增 `changed-only` 输入（默认 `false`）：PR 场景只检查本次变更的提示词文件，自动读取 `pull_request.base.sha`（push 用 `github.event.before`，基线缺失或全零时回退 `HEAD^`）；需 `actions/checkout` 配 `fetch-depth: 0`。
+- 测试新增 4 个用例（changed 模式只查变更、无匹配变更、非法基线、Action 契约），总数 61 → 65。
+
+### Changed
+
+- README / README.en 的 GitHub Actions 示例与自检命令补充 `changed-only` / `--changed`；SKILL 工具链说明同步；版本 1.13.0。
+
 ## [1.12.0] - 2026-10-18
 
 ### Added

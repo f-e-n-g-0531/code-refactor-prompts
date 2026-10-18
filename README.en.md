@@ -64,8 +64,8 @@ code-refactor-prompts/
 - **Per-language guidance**: Java, Python, JS/TS, React, Go, Rust, C#, C++, SQL, Kotlin, Swift, Ruby, PHP.
 - **End-to-end workflows**: review-first, legacy baseline, multi-file batching, iterative repair.
 - **Batch checks and commit gating**: `check_prompt.py` accepts multiple files and directories (per-file PASS/FAIL plus a summary); `.pre-commit-hooks.yaml` lets pre-commit and CI gate on it directly.
-- **PR gate (GitHub Actions)**: the root `action.yml` checks prompts in a pull request and annotates findings on the matching files via `--format github`, with no extra scripts.
-- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 61 tests, run on every CI build.
+- **PR gate (GitHub Actions)**: the root `action.yml` checks prompts in a pull request and annotates findings on the matching files via `--format github`; with `changed-only: true` it checks only the prompt files changed in that PR.
+- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 65 tests, run on every CI build.
 - **Delivery checklist**: `references/checklists.md` walks from prompt authoring to merge.
 - **One-command composition**: `scripts/compose_prompt.py --code <file>` builds a filled eight-segment prompt (Chinese or English, auto-detects 13 languages and their test commands); supplying both `--rule` (business rules) and `--case` (acceptance cases) produces a full tier-C prompt, and the result is refused unless it passes the shipped checker.
 - **Bilingual self-check**: `scripts/check_prompt.py` validates the eight segments and verifiability in Chinese and English, checks that the code section contains code (or a paste placeholder) and that the acceptance command / cases live in the acceptance section, detects the prompt language and checks that the acceptance command matches it (e.g. Go requires `go test`), and flags anti-patterns such as "tweak the tests as well" or "rewrite the whole project". Adds `--strict` (warnings fail), `--skeleton` (print fill-in skeletons for missing segments) and `--fix` (append missing-segment skeletons to the file and re-check).
@@ -113,6 +113,7 @@ python3 scripts/check_prompt.py my-prompt.txt --lang go       # force the langua
 python3 scripts/check_prompt.py my-prompt.txt --strict        # warnings fail (team gate)
 python3 scripts/check_prompt.py my-prompt.txt --skeleton      # print skeletons for missing segments
 python3 scripts/check_prompt.py my-prompt.txt --fix           # append skeletons to the file and re-check
+python3 scripts/check_prompt.py --changed origin/main --strict # only prompts changed since the base
 cat my-prompt.txt | python3 scripts/check_prompt.py -
 ```
 
@@ -144,7 +145,7 @@ Then in `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.12.0
+    rev: v1.13.0
     hooks:
       - id: code-refactor-prompt-check
 ```
@@ -163,13 +164,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: f-e-n-g-0531/code-refactor-prompts@v1.11.0
         with:
-          files: prompts/     # file or directory; directories scan *.prompt / *.prompt.md / *.prompt.txt
-          strict: true        # warnings fail too
+          fetch-depth: 0        # changed-only needs the full history
+      - uses: f-e-n-g-0531/code-refactor-prompts@v1.13.0
+        with:
+          changed-only: true     # only prompts changed in this PR; otherwise files is used (repo root by default)
+          strict: true           # warnings fail too
 ```
 
-Requires a Linux / macOS runner (bash + python3). Local equivalent: `python3 scripts/check_prompt.py --format github prompts/ --strict`.
+Requires a Linux / macOS runner (bash + python3). Local equivalent: `python3 scripts/check_prompt.py --changed origin/main --format github --strict`.
 
 ## CI and release
 
