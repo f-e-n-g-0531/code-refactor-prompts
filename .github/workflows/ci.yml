@@ -197,3 +197,35 @@ jobs:
           # The bad prompt is expected to fail; reset the exit code so pwsh does
           # not mark the whole step as failed on its final command.
           exit 0
+
+  test-python39:
+    name: Test tooling on Python 3.9
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Validate structure
+        run: python .github/scripts/validate_skill.py
+
+      - name: Run tooling tests
+        run: python -m unittest discover -s scripts/tests -p "test_*.py" -v
+
+      - name: Check source links (offline)
+        run: python scripts/check_sources.py
+
+      - name: Install package and test console script
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet --disable-pip-version-check .
+          python -m check_prompt --strict scripts/fixtures/good-prompt.txt
+          if python -m check_prompt --strict scripts/fixtures/bad-prompt.txt; then
+            echo "::error::the console script must reject a bad prompt"
+            exit 1
+          fi
+
