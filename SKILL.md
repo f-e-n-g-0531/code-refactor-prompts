@@ -4,7 +4,7 @@ description: Compose high-quality, behavior-preserving code refactoring prompts.
 license: MIT
 metadata:
   author: f-e-n-g-0531
-  version: "1.13.0"
+  version: "1.14.0"
 ---
 
 # 代码重构优化提示词
@@ -106,7 +106,7 @@ metadata:
 - **改动清单（必选）**：无论哪种格式，都要求「每处改动 → 改了什么 → 为什么 → 影响面」表格。
 - **生成后自检**：把提示词存成文件，运行 `python3 scripts/check_prompt.py <file>`，检查八段是否齐全、验收是否可验证、验收命令与语言是否匹配（自动识别，或 `--lang go` 显式指定），并拦截「顺便改测试」「整体重写」等典型反模式。中英文提示词都支持；团队门禁可用 `--strict`（警告即失败），缺失段落用 `--skeleton` 直接打印可填骨架。
 
-生成、自检、批量与 pre-commit 集成：`scripts/compose_prompt.py --code <文件>` 一键生成（同时提供 `--rule` / `--case` 时直接生成 C 档）；`scripts/check_prompt.py <file>` 自检（`--strict` / `--skeleton` / `--fix` / `--json` / `--format github` / `--changed BASE`）；`scripts/check_prompt.py prompts/ --strict` 批量检查目录；`.pre-commit-hooks.yaml` 通过 `pyproject.toml` 安装的 `code-refactor-prompt-check` console script 接入 pre-commit。详见 README。
+生成、自检、批量与 pre-commit 集成：`scripts/compose_prompt.py --code <文件>` 一键生成（同时提供 `--rule` / `--case` 时直接生成 C 档，`--require-c-tier` 强制该组合）；`scripts/check_prompt.py <file>` 自检（`--strict` / `--skeleton` / `--fix` / `--json` / `--format github` / `--changed BASE`）；`scripts/check_prompt.py prompts/ --strict` 批量检查目录；`.pre-commit-hooks.yaml` 通过 `pyproject.toml` 安装的 `code-refactor-prompt-check` console script 接入 pre-commit。详见 README。
 
 ## 迭代修复（应用后验证）
 

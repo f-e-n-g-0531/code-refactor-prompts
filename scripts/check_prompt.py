@@ -406,12 +406,14 @@ DEFAULT_INCLUDE_PATTERNS = ("*.prompt", "*.prompt.md", "*.prompt.txt")
 GITHUB_ESCAPE = str.maketrans({"%": "%25", "\r": "%0D", "\n": "%0A"})
 
 
-def github_annotation(level: str, path: str | None, message: str) -> str:
+def github_annotation(level: str, path: str | None, message: str, line: int | None = None) -> str:
     """Format a GitHub Actions workflow command (error / warning / notice)."""
+    escaped = message.translate(GITHUB_ESCAPE)
     if path is None:
-        return f"::{level}::{message.translate(GITHUB_ESCAPE)}"
+        return f"::{level}::{escaped}"
     clean = path.replace("\\", "/").translate(GITHUB_ESCAPE)
-    return f"::{level} file={clean}::{message.translate(GITHUB_ESCAPE)}"
+    location = f"file={clean},line={line}" if line else f"file={clean}"
+    return f"::{level} {location}::{escaped}"
 
 
 def read_text_file(path: Path) -> str:
@@ -468,6 +470,24 @@ def print_result(result: dict, blocks: list[str] | None = None) -> None:
         for block in blocks:
             print()
             print(block)
+
+
+def finding_line(text: str, code: str) -> int | None:
+    """Best-effort line number for a finding (used by GitHub annotations)."""
+    code = code.removeprefix("strict-")
+    if code == "empty-code-section":
+        match = CODE_HEADING.search(text)
+    elif code == "acceptance-section-unverifiable":
+        match = ACCEPTANCE_HEADING.search(text)
+    elif code == "language-mismatch":
+        match = TEST_COMMAND.search(text)
+    else:
+        match = None
+        for name, pattern, _severity, _message in ANTI_PATTERNS:
+            if name == code:
+                match = pattern.search(text)
+                break
+    return text[: match.start()].count("\n") + 1 if match else None
 
 
 def changed_prompt_files(base: str, include: str) -> list[str]:
@@ -569,9 +589,20 @@ def run_batch(
         if not as_json:
             if github_output:
                 for item in result["errors"]:
-                    print(github_annotation("error", str(file), item["message"]))
+                    print(
+                        github_annotation(
+                            "error", str(file), item["message"], finding_line(text, item["code"])
+                        )
+                    )
                 for warning in result["warnings"]:
-                    print(github_annotation("warning", str(file), warning["message"]))
+                    print(
+                        github_annotation(
+                            "warning",
+                            str(file),
+                            warning["message"],
+                            finding_line(text, warning["code"]),
+                        )
+                    )
             else:
                 print(f"{'PASS' if result['pass'] else 'FAIL'} {file}")
                 if not result["pass"]:
@@ -735,9 +766,17 @@ def main() -> int:
     elif args.format == "github":
         label = None if source == "-" else source
         for item in result["errors"]:
-            print(github_annotation("error", label, item["message"]))
+            print(
+                github_annotation(
+                    "error", label, item["message"], finding_line(text, item["code"])
+                )
+            )
         for item in result["warnings"]:
-            print(github_annotation("warning", label, item["message"]))
+            print(
+                github_annotation(
+                    "warning", label, item["message"], finding_line(text, item["code"])
+                )
+            )
         print(
             f"{len(result['errors'])} error(s), {len(result['warnings'])} warning(s) in "
             f"{'(stdin)' if source == '-' else source}"

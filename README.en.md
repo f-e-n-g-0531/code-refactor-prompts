@@ -65,9 +65,9 @@ code-refactor-prompts/
 - **End-to-end workflows**: review-first, legacy baseline, multi-file batching, iterative repair.
 - **Batch checks and commit gating**: `check_prompt.py` accepts multiple files and directories (per-file PASS/FAIL plus a summary); `.pre-commit-hooks.yaml` lets pre-commit and CI gate on it directly.
 - **PR gate (GitHub Actions)**: the root `action.yml` checks prompts in a pull request and annotates findings on the matching files via `--format github`; with `changed-only: true` it checks only the prompt files changed in that PR.
-- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 65 tests, run on every CI build.
+- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 69 tests, run on every CI build.
 - **Delivery checklist**: `references/checklists.md` walks from prompt authoring to merge.
-- **One-command composition**: `scripts/compose_prompt.py --code <file>` builds a filled eight-segment prompt (Chinese or English, auto-detects 13 languages and their test commands); supplying both `--rule` (business rules) and `--case` (acceptance cases) produces a full tier-C prompt, and the result is refused unless it passes the shipped checker.
+- **One-command composition**: `scripts/compose_prompt.py --code <file>` builds a filled eight-segment prompt (Chinese or English, auto-detects 13 languages and their test commands); supplying both `--rule` (business rules) and `--case` (acceptance cases) produces a full tier-C prompt (`--require-c-tier` refuses to emit unless both are supplied), and the result is refused unless it passes the shipped checker.
 - **Bilingual self-check**: `scripts/check_prompt.py` validates the eight segments and verifiability in Chinese and English, checks that the code section contains code (or a paste placeholder) and that the acceptance command / cases live in the acceptance section, detects the prompt language and checks that the acceptance command matches it (e.g. Go requires `go test`), and flags anti-patterns such as "tweak the tests as well" or "rewrite the whole project". Adds `--strict` (warnings fail), `--skeleton` (print fill-in skeletons for missing segments) and `--fix` (append missing-segment skeletons to the file and re-check).
 - **Executable examples**: 6 runnable examples are run in CI by `verify_examples.py` (`go test` / `python -m unittest` / `cargo test` / `node --test` / `dotnet run` / SQLite result-set comparison), so docs cannot drift from code.
 - **Source-link checks**: `scripts/check_sources.py` validates `references/sources.md` offline for URL syntax and duplicates, and requests every URL with `--online`; CI runs the offline check on every push and a weekly `Link check` workflow catches rot.
@@ -145,7 +145,7 @@ Then in `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.13.0
+    rev: v1.14.0
     hooks:
       - id: code-refactor-prompt-check
 ```
@@ -154,7 +154,7 @@ The repo exposes a `code-refactor-prompt-check` console script via `pyproject.to
 
 ## GitHub Actions (PR gate)
 
-The root `action.yml` runs the checker in a pull request and annotates findings on the matching files with `--format github`:
+The root `action.yml` runs the checker in a pull request and annotates findings on the matching files with `--format github` (findings that can be located include a line number):
 
 ```yaml
 name: Prompts
@@ -166,7 +166,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0        # changed-only needs the full history
-      - uses: f-e-n-g-0531/code-refactor-prompts@v1.13.0
+      - uses: f-e-n-g-0531/code-refactor-prompts@v1.14.0
         with:
           changed-only: true     # only prompts changed in this PR; otherwise files is used (repo root by default)
           strict: true           # warnings fail too

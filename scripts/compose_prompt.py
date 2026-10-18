@@ -21,6 +21,8 @@ Options:
                            prompt into tier C by filling the context section)
     --case TEXT            acceptance case such as 'empty order -> 0' (repeatable;
                            replaces the acceptance placeholder with concrete cases)
+    --require-c-tier       refuse to emit unless both --rule and --case are given
+                           (tier C gate for critical refactors)
     --test-command CMD     acceptance test command (default: per language)
     --output-lang zh|en    language of the generated prompt (default: zh)
     --out FILE             write to FILE instead of stdout
@@ -330,6 +332,11 @@ def main() -> int:
         default=[],
         help="acceptance case such as 'empty order -> 0' (repeatable; replaces the acceptance placeholder)",
     )
+    parser.add_argument(
+        "--require-c-tier",
+        action="store_true",
+        help="refuse to emit unless both --rule and --case are given",
+    )
     parser.add_argument("--test-command", help="acceptance test command (default: per language)")
     parser.add_argument("--output-lang", choices=["zh", "en"], default="zh", help="language of the generated prompt")
     parser.add_argument("--out", help="write the prompt to FILE instead of stdout")
@@ -376,6 +383,16 @@ def main() -> int:
             return 2
         default_project = source.stem
 
+    rules = [rule.strip() for rule in args.rule if rule.strip()]
+    cases = [case.strip() for case in args.case if case.strip()]
+    if args.require_c_tier and (not rules or not cases):
+        print(
+            "--require-c-tier needs both --rule (business rules) and --case (acceptance cases); "
+            "refusing to emit a tier-B prompt.",
+            file=sys.stderr,
+        )
+        return 2
+
     goals = args.goal or DEFAULT_GOALS.get(language, DEFAULT_GOALS["default"])
     goals_en = args.goal or DEFAULT_GOALS_EN.get(language, DEFAULT_GOALS_EN["default"])
     test_command = args.test_command or DEFAULT_TEST_COMMANDS[language]
@@ -394,8 +411,8 @@ def main() -> int:
         "goals": goals,
         "goals_en": goals_en,
         "constraints": args.constraint,
-        "rules": [rule.strip() for rule in args.rule if rule.strip()],
-        "cases": [case.strip() for case in args.case if case.strip()],
+        "rules": rules,
+        "cases": cases,
     }
     prompt = build_en(context) if args.output_lang == "en" else build_zh(context)
 

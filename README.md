@@ -65,9 +65,9 @@ code-refactor-prompts/
 - **分语言定制**：Java / Python / JS-TS / React / Go / Rust / C# / C++ / SQL / Kotlin / Swift / Ruby / PHP 的惯用手法、测试命令与红线。
 - **批量与门禁**：`check_prompt.py` 支持多文件 / 目录批量检查（逐文件 PASS/FAIL + 汇总），附 `.pre-commit-hooks.yaml`，pre-commit / CI 可直接接入。
 - **PR 门禁（GitHub Actions）**：根目录 `action.yml` 在 PR 中运行检查器，并以 `--format github` 将问题注解到对应文件；`changed-only: true` 时只检查本次 PR 变更的提示词文件。
-- **工具链回归测试**：`scripts/tests/` 以 65 个用例覆盖检查器、生成器（含 C 档）、`--fix` 闭环、出处链接巡检、13 语言矩阵与校验脚本自身，CI 每次运行。
+- **工具链回归测试**：`scripts/tests/` 以 69 个用例覆盖检查器、生成器（含 C 档）、`--fix` 闭环、出处链接巡检、13 语言矩阵与校验脚本自身，CI 每次运行。
 - **落地清单**：`references/checklists.md` 给出「发提示词前 → 应用前 → 应用后 → 合并前」四段检查清单。
-- **一键生成**：`scripts/compose_prompt.py --code <文件>` 从源码文件生成填好的八段提示词（中 / 英，自动识别 13 种语言与测试命令）；同时提供 `--rule`（业务规则）与 `--case`（验收用例）时直接生成完整 C 档；生成结果先过检查器，不合规就拒绝输出。
+- **一键生成**：`scripts/compose_prompt.py --code <文件>` 从源码文件生成填好的八段提示词（中 / 英，自动识别 13 种语言与测试命令）；同时提供 `--rule`（业务规则）与 `--case`（验收用例）时直接生成完整 C 档，`--require-c-tier` 可强制要求两者（关键重构门禁）；生成结果先过检查器，不合规就拒绝输出。
 - **可自检（双语）**：`scripts/check_prompt.py` 检查八段、可验证验收与守卫，并校验代码段是否真的含代码（或 `{粘贴代码}` 占位符）、验收命令是否写在验收段；自动识别中英文段落与提示词语言，校验验收命令是否匹配（如 Go 必须写 `go test`），拦截「顺便改测试」「整体重写」「空泛指标」等中英文反模式；支持 `--strict`（警告即失败）、`--skeleton`（打印缺失段落骨架）与 `--fix`（把缺失段落骨架追加到文件并复查）。
 - **样例可执行**：6 个跨语言 / 跨领域样例由 CI 用 `verify_examples.py` 真实执行（`go test` / `python -m unittest` / `cargo test` / `node --test` / `dotnet run` / SQLite 结果集对比），文档与代码不会脱节。
 - **出处可巡检**：`scripts/check_sources.py` 离线校验 `references/sources.md` 的链接语法与去重，`--online` 逐个请求；CI 每次跑离线检查，另有每周 `Link check` workflow 在线巡检，防止出处腐烂。
@@ -146,7 +146,7 @@ pre-commit install
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.13.0
+    rev: v1.14.0
     hooks:
       - id: code-refactor-prompt-check
 ```
@@ -155,7 +155,7 @@ repos:
 
 ## GitHub Actions（PR 门禁）
 
-根目录 `action.yml` 可直接在 PR 中运行检查器，并用 `--format github` 把问题注解到对应文件：
+根目录 `action.yml` 可直接在 PR 中运行检查器，并用 `--format github` 把问题注解到对应文件（可定位的问题会带行号）：
 
 ```yaml
 name: Prompts
@@ -167,7 +167,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0        # changed-only 需要完整历史
-      - uses: f-e-n-g-0531/code-refactor-prompts@v1.13.0
+      - uses: f-e-n-g-0531/code-refactor-prompts@v1.14.0
         with:
           changed-only: true     # 只检查本 PR 变更的提示词；不设置时检查 files（默认整个仓库）
           strict: true           # 警告也算失败

@@ -7,6 +7,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -356,6 +357,22 @@ class CliTest(unittest.TestCase):
         self.assertIn("::error file=", result.stdout)
         self.assertIn("::warning file=", result.stdout)
         self.assertIn("缺少段落", result.stdout)
+
+    def test_github_format_includes_line_numbers_when_known(self):
+        result = run_checker("--format", "github", str(FIXTURES / "bad-antipattern-prompt.txt"))
+        self.assertEqual(result.returncode, 1)
+        self.assertIsNotNone(re.search(r"::error file=.+,line=\d+::", result.stdout))
+
+    def test_github_format_batch_includes_line_numbers(self):
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "bad.prompt.txt"
+            target.write_text(
+                (FIXTURES / "bad-antipattern-prompt.txt").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            result = run_checker(str(Path(raw)), "--format", "github")
+            self.assertEqual(result.returncode, 1)
+            self.assertIsNotNone(re.search(r"::error file=.+,line=\d+::", result.stdout))
 
     def test_github_format_rejects_json_and_fix(self):
         fixture = str(FIXTURES / "good-prompt.txt")

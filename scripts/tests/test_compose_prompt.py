@@ -165,6 +165,24 @@ class ComposeTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
         self.assertIn("--code-lang", result.stderr)
 
+    def test_require_c_tier_rejects_b_tier(self):
+        result = run_compose("--code", str(SAMPLE_GO), "--require-c-tier")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("--require-c-tier", result.stderr)
+
+    def test_require_c_tier_accepts_full_c_tier(self):
+        result = run_compose(
+            "--code",
+            str(SAMPLE_GO),
+            "--require-c-tier",
+            "--rule",
+            "图书 9 折",
+            "--case",
+            "空订单 -> 0",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("业务规则", result.stdout)
+
     def test_unknown_extension_requires_code_lang(self):
         with tempfile.TemporaryDirectory() as raw:
             source = Path(raw) / "snippet.xyz"

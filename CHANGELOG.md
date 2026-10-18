@@ -2,6 +2,18 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.14.0] - 2026-10-18
+
+### Added
+
+- `compose_prompt.py --require-c-tier`：关键重构门禁——未同时提供 `--rule` 与 `--case` 时拒绝输出（退出码 2），避免生成带占位符的 B 档提示词。
+- `check_prompt.py --format github` 注解定位增强：可定位的问题（反模式、代码段为空、验收段不可验证、语言不匹配）输出 `line=…`，PR 注解可直接跳到对应行；段落缺失等无法定位的问题仍为文件级注解。
+- 测试新增 4 个用例（C 档门禁拒绝 / 通过、单文件行号注解、批量行号注解），总数 65 → 69。
+
+### Changed
+
+- README / README.en 的「一键生成」与 GitHub Action 说明补充 C 档门禁与行号注解；SKILL 工具链说明同步；版本 1.14.0。
+
 ## [1.13.0] - 2026-10-18
 
 ### Added
