@@ -65,10 +65,10 @@ code-refactor-prompts/
 - **End-to-end workflows**: review-first, legacy baseline, multi-file batching, iterative repair.
 - **Batch checks and commit gating**: `check_prompt.py` accepts multiple files and directories (per-file PASS/FAIL plus a summary); `.pre-commit-hooks.yaml` lets pre-commit and CI gate on it directly.
 - **PR gate (GitHub Actions)**: the root `action.yml` checks prompts in a pull request and annotates findings on the matching files via `--format github`, with no extra scripts.
-- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 59 tests, run on every CI build.
+- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 61 tests, run on every CI build.
 - **Delivery checklist**: `references/checklists.md` walks from prompt authoring to merge.
 - **One-command composition**: `scripts/compose_prompt.py --code <file>` builds a filled eight-segment prompt (Chinese or English, auto-detects 13 languages and their test commands); supplying both `--rule` (business rules) and `--case` (acceptance cases) produces a full tier-C prompt, and the result is refused unless it passes the shipped checker.
-- **Bilingual self-check**: `scripts/check_prompt.py` validates the eight segments and verifiability in Chinese and English, detects the prompt language and checks that the acceptance command matches it (e.g. Go requires `go test`), and flags anti-patterns such as "tweak the tests as well" or "rewrite the whole project". Adds `--strict` (warnings fail), `--skeleton` (print fill-in skeletons for missing segments) and `--fix` (append missing-segment skeletons to the file and re-check).
+- **Bilingual self-check**: `scripts/check_prompt.py` validates the eight segments and verifiability in Chinese and English, checks that the code section contains code (or a paste placeholder) and that the acceptance command / cases live in the acceptance section, detects the prompt language and checks that the acceptance command matches it (e.g. Go requires `go test`), and flags anti-patterns such as "tweak the tests as well" or "rewrite the whole project". Adds `--strict` (warnings fail), `--skeleton` (print fill-in skeletons for missing segments) and `--fix` (append missing-segment skeletons to the file and re-check).
 - **Executable examples**: 6 runnable examples are run in CI by `verify_examples.py` (`go test` / `python -m unittest` / `cargo test` / `node --test` / `dotnet run` / SQLite result-set comparison), so docs cannot drift from code.
 - **Source-link checks**: `scripts/check_sources.py` validates `references/sources.md` offline for URL syntax and duplicates, and requests every URL with `--online`; CI runs the offline check on every push and a weekly `Link check` workflow catches rot.
 - **Graded audit**: `audit_templates.py` runs the full checker over the default and English master templates, checks the 12 variants that carry a prompt block for an acceptance anchor and error-level anti-patterns, and checks the guard variant for its `NO_CODE_PROVIDED` / `NO_REFACTORING_NEEDED` markers (the quick-reference section is skipped).
@@ -144,7 +144,7 @@ Then in `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.11.0
+    rev: v1.12.0
     hooks:
       - id: code-refactor-prompt-check
 ```

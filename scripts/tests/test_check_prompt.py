@@ -211,6 +211,38 @@ class FixtureTest(unittest.TestCase):
                 result = checker.check(base + "\n\n补充：" + phrase)
                 self.assertIn(code, [item["code"] for item in result["errors"]])
 
+    def test_empty_code_section_is_an_error(self):
+        prompt = (
+            "你是资深 Go 工程师。\n\n"
+            "【前置判断】\n- 未提供代码：输出 NO_CODE_PROVIDED。\n\n"
+            "【上下文】\n- 项目：demo\n\n"
+            "【待重构代码】\n（代码随后补充）\n\n"
+            "【硬约束】\n1. 外部行为 100% 一致。\n\n"
+            "【重构目标】\n1. 拆分函数。\n\n"
+            "【验收标准】\n- 测试命令：go test ./...\n- 用例：空输入 → 0\n\n"
+            "【输出格式】\n1. 统一 diff（声明基线文件）。\n"
+        )
+        result = checker.check(prompt)
+        self.assertIn("empty-code-section", [item["code"] for item in result["errors"]])
+
+    def test_acceptance_must_live_in_the_acceptance_section(self):
+        prompt = (
+            "你是资深 Go 工程师。\n\n"
+            "【前置判断】\n- 未提供代码：输出 NO_CODE_PROVIDED。\n\n"
+            "【上下文】\n- 项目：demo，测试命令 go test ./...\n\n"
+            "【待重构代码】\n" + "```go\npackage demo\n" + "```\n\n"
+            "【硬约束】\n1. 外部行为 100% 一致。\n\n"
+            "【重构目标】\n1. 拆分函数。\n\n"
+            "【验收标准】\n- 见上文测试命令。\n\n"
+            "【输出格式】\n1. 统一 diff（声明基线文件）。\n"
+        )
+        result = checker.check(prompt)
+        self.assertTrue(result["pass"], result["errors"])
+        self.assertIn(
+            "acceptance-section-unverifiable",
+            [item["code"] for item in result["warnings"]],
+        )
+
     def test_english_anti_patterns(self):
         base = (FIXTURES / "good-en-prompt.txt").read_text(encoding="utf-8")
         for phrase, code in EN_ANTI_PATTERNS:

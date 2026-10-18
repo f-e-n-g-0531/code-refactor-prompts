@@ -15,7 +15,9 @@ the bundled pre-commit hook runs on the files passed by pre-commit.
 
 Checks:
   - the eight required segments are present (Chinese or English headings);
-  - acceptance criteria is verifiable (test command or "input -> expected" cases);
+  - the code section contains a fenced code block (or a {paste code} placeholder);
+  - acceptance criteria is verifiable (test command or "input -> expected" cases),
+    written inside the acceptance section;
   - the test command matches the language of the prompt (auto-detected from the
     fenced code block, or forced with --lang);
   - "keep behaviour unchanged" is backed by verifiable checks;
@@ -71,6 +73,17 @@ BEHAVIOUR_CONSTRAINT = re.compile(
     re.I,
 )
 VERIFIABLE_HINT = re.compile(r"期望|\bexpected\b|\bexpectation", re.I)
+CODE_HEADING = re.compile(
+    r"【待重构代码[^】]*】|\[CODE TO REFACTOR[^\]]*\]|^#{1,4}\s*(?:code to refactor|待重构代码)",
+    re.I | re.M,
+)
+ACCEPTANCE_HEADING = re.compile(
+    r"【验收标准[^】]*】|\[ACCEPTANCE[^\]]*\]|^#{1,4}\s*(?:acceptance criteria|验收标准)",
+    re.I | re.M,
+)
+SEGMENT_BOUNDARY = re.compile(r"\n(?=\s*(?:【[^】\n]+】|\[[A-Z][^\]\n]*\]|#{1,4}\s))")
+FENCED_BLOCK = re.compile(r"```[^\n]*\n(.*?)```", re.S)
+CODE_PLACEHOLDER = re.compile(r"\{[^}\n]{0,100}(?:代码|code|粘贴|paste)[^}\n]{0,100}\}", re.I)
 
 # Fence language -> canonical language.
 LANGUAGE_FENCES = {
@@ -244,6 +257,48 @@ def looks_english(text: str) -> bool:
     return cjk == 0 and letters > 20
 
 
+def segment_body(text: str, heading: re.Pattern) -> str | None:
+    """Return the text after a segment heading, up to the next segment heading."""
+    match = heading.search(text)
+    if not match:
+        return None
+    rest = text[match.end() :]
+    boundary = SEGMENT_BOUNDARY.search(rest)
+    return rest[: boundary.start()] if boundary else rest
+
+
+def check_section_content(text: str, errors: list[dict], warnings: list[dict]) -> None:
+    """The code section must contain code (or a placeholder), not just a heading."""
+    code_body = segment_body(text, CODE_HEADING)
+    if code_body is not None:
+        has_code = bool(FENCED_BLOCK.search(code_body))
+        has_placeholder = bool(CODE_PLACEHOLDER.search(code_body))
+        if not has_code and not has_placeholder:
+            errors.append(
+                error(
+                    "empty-code-section",
+                    "【待重构代码】段落里没有代码：请粘贴 fenced code block，或保留 {粘贴代码} 占位符。"
+                    " The code section must contain a fenced code block or placeholder.",
+                )
+            )
+
+    acceptance_body = segment_body(text, ACCEPTANCE_HEADING)
+    if acceptance_body is not None:
+        local = bool(
+            TEST_COMMAND.search(acceptance_body)
+            or VERIFIABLE_HINT.search(acceptance_body)
+            or (acceptance_body.count("→") + acceptance_body.count("->")) >= 2
+        )
+        if not local:
+            warnings.append(
+                error(
+                    "acceptance-section-unverifiable",
+                    "【验收标准】段落内没有测试命令或用例：把命令 / 用例直接写进验收标准段，不要只写「见上文」。"
+                    " Put the command / cases inside the acceptance section.",
+                )
+            )
+
+
 def check_language(text: str, languages: list[str], errors: list[dict], warnings: list[dict]) -> None:
     if not languages:
         return
@@ -301,6 +356,8 @@ def check(text: str, explicit_language: str = "auto", strict: bool = False) -> d
         warnings.append(
             error("no-output-format", "输出格式未约定 unified diff / 完整文件 / patch")
         )
+
+    check_section_content(text, errors, warnings)
 
     if explicit_language == "auto":
         languages = detect_languages(text)

@@ -2,6 +2,17 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.12.0] - 2026-10-18
+
+### Added
+
+- `check_prompt.py` 段落级校验：`【待重构代码】` / `[CODE TO REFACTOR]` 段落内必须有 fenced code block 或 `{粘贴代码}` 占位符（`empty-code-section`，error）；`【验收标准】` / `[ACCEPTANCE …]` 段落内必须写测试命令或用例（`acceptance-section-unverifiable`，warning；`--strict` 下失败），拦截「命令写在上下文、验收段只写见上文」的结构性空转。
+- 测试新增 2 个用例（空代码段报错、验收命令不在验收段仅告警），总数 59 → 61。
+
+### Changed
+
+- README / README.en 的可自检说明补充段落级校验；检查器文档同步；版本 1.12.0。
+
 ## [1.11.0] - 2026-10-18
 
 ### Added
