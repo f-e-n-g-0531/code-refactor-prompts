@@ -148,7 +148,7 @@ Then in `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.15.1
+    rev: v1.16.0
     hooks:
       - id: code-refactor-prompt-check
 ```
@@ -169,7 +169,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0        # changed-only needs the full history
-      - uses: f-e-n-g-0531/code-refactor-prompts@v1.15.1
+      - uses: f-e-n-g-0531/code-refactor-prompts@v1.16.0
         with:
           changed-only: true     # only prompts changed in this PR; otherwise files is used (repo root by default)
           strict: true           # warnings fail too
@@ -179,7 +179,7 @@ Requires a Linux / macOS runner (bash + python3). Local equivalent: `python3 scr
 
 ## CI and release
 
-- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)): validates skill structure, frontmatter, version alignment, references, Markdown structure (duplicate headings) and test counts, links and copy; audits master templates and specialised variants; self-tests the prompt checker; runs the tooling regression suite; checks source links offline (`check_sources.py`); self-tests GitHub annotation output (`--format github`); installs and tests the packaged pre-commit console script; runs the hook end to end with `pre-commit try-repo` (good prompt passes, bad prompt blocks); sets up Node 24 and executes all 6 runnable examples (go test / python unittest / cargo test / node --test / dotnet run / SQLite comparison); dry-runs packaging.
+- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)): validates skill structure, frontmatter, version alignment, references, Markdown structure (duplicate headings) and test counts, links and copy; audits master templates and specialised variants; self-tests the prompt checker; runs the tooling regression suite; checks source links offline (`check_sources.py`); self-tests GitHub annotation output (`--format github`); installs and tests the packaged pre-commit console script; runs the hook end to end with `pre-commit try-repo` (good prompt passes, bad prompt blocks); sets up Node 24 and executes all 6 runnable examples (go test / python unittest / cargo test / node --test / dotnet run / SQLite comparison); dry-runs packaging. A Windows runner job re-runs structure validation, template audit, tooling tests, the offline source check and the console-script install to cover cross-platform differences.
 - **Link check** ([.github/workflows/link-check.yml](.github/workflows/link-check.yml)): every Monday 03:17 UTC (or manually) it requests every URL in `references/sources.md` and fails the run when a link is broken.
 - **Release** ([.github/workflows/release.yml](.github/workflows/release.yml)): on a `v*` tag it validates, audits templates, executes the examples, builds `zip` / `tar.gz` / `SHA256SUMS`, and publishes a GitHub Release.
 

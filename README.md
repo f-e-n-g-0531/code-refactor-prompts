@@ -149,7 +149,7 @@ pre-commit install
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.15.1
+    rev: v1.16.0
     hooks:
       - id: code-refactor-prompt-check
 ```
@@ -170,7 +170,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0        # changed-only 需要完整历史
-      - uses: f-e-n-g-0531/code-refactor-prompts@v1.15.1
+      - uses: f-e-n-g-0531/code-refactor-prompts@v1.16.0
         with:
           changed-only: true     # 只检查本 PR 变更的提示词；不设置时检查 files（默认整个仓库）
           strict: true           # 警告也算失败
@@ -180,7 +180,7 @@ jobs:
 
 ## CI 与发布
 
-- **CI**（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：push 到 main / PR 时校验技能结构、frontmatter、版本一致性、引用完整性、Markdown 文档结构（重复标题）与用例数、相对链接及禁止的过程性文案；对模板与专项变体做分级审计；自测提示词检查器；运行工具链回归测试；离线检查出处链接（`check_sources.py`）；自测 GitHub 注解输出（`--format github`）；安装并测试打包后的 pre-commit console script；用 `pre-commit try-repo` 做钩子端到端验证（好提示词通过、坏提示词阻断）；配置 Node 24 并实际执行全部 6 个可执行样例（go test / python unittest / cargo test / node --test / dotnet run / SQLite 结果集对比）；并 dry-run 一次发布打包。
+- **CI**（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：push 到 main / PR 时校验技能结构、frontmatter、版本一致性、引用完整性、Markdown 文档结构（重复标题）与用例数、相对链接及禁止的过程性文案；对模板与专项变体做分级审计；自测提示词检查器；运行工具链回归测试；离线检查出处链接（`check_sources.py`）；自测 GitHub 注解输出（`--format github`）；安装并测试打包后的 pre-commit console script；用 `pre-commit try-repo` 做钩子端到端验证（好提示词通过、坏提示词阻断）；配置 Node 24 并实际执行全部 6 个可执行样例（go test / python unittest / cargo test / node --test / dotnet run / SQLite 结果集对比）；并 dry-run 一次发布打包。另有 Windows runner 任务复跑结构校验、模板审计、工具链测试、出处离线检查与 console script 安装，覆盖跨平台差异。
 - **Link check**（[.github/workflows/link-check.yml](.github/workflows/link-check.yml)）：每周一 03:17 UTC（可手动触发）在线请求 `references/sources.md` 的全部链接，失败即报红。
 - **Release**（[.github/workflows/release.yml](.github/workflows/release.yml)）：推送 `v*` 标签后自动校验、审计模板、实跑样例、打包（`zip` / `tar.gz` / `SHA256SUMS`）并创建 GitHub Release。
 

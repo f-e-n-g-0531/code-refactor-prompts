@@ -156,3 +156,41 @@ jobs:
           assert not any("/.github/" in n for n in names), "package must not include .github"
           print("package OK:", len(names), "entries")
           PY
+
+  test-windows:
+    name: Test tooling on Windows
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate structure
+        run: python .github/scripts/validate_skill.py
+
+      - name: Audit templates
+        run: python .github/scripts/audit_templates.py
+
+      - name: Run tooling tests
+        run: python -m unittest discover -s scripts/tests -p "test_*.py" -v
+
+      - name: Check source links (offline)
+        run: python scripts/check_sources.py
+
+      - name: Install package and test console script
+        run: |
+          python -m pip install --quiet --disable-pip-version-check .
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python -m check_prompt --strict scripts/fixtures/good-prompt.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python -m check_prompt --strict scripts/fixtures/bad-prompt.txt
+          if ($LASTEXITCODE -eq 0) {
+            Write-Error "the console script must reject a bad prompt"
+            exit 1
+          }

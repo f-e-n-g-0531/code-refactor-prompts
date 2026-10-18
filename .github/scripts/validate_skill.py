@@ -334,6 +334,8 @@ def check_ci_wiring() -> None:
         errors.append("ci.yml：未运行离线出处链接检查（check_sources.py）")
     if "run_checks.py --list" not in ci:
         errors.append("ci.yml：未验证一键本地门禁接线（run_checks.py --list）")
+    if "windows-latest" not in ci:
+        errors.append("ci.yml：缺少跨平台校验（windows-latest 的 Windows runner）")
     for workflow in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
         if "CONTRIBUTING.md" not in read(workflow):
             errors.append(f"{workflow}：发布打包未包含 CONTRIBUTING.md")

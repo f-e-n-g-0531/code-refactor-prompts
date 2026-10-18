@@ -2,6 +2,17 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.16.0] - 2026-10-18
+
+### Added
+
+- CI 增加 Windows runner（`windows-latest` + Python 3.12）：复跑结构校验、模板审计、工具链测试、出处离线检查与 `pip install .` 后的 console script 行为，覆盖此前只在 ubuntu 上验证的跨平台差异（编码、路径、子进程）。
+- 校验器强制 CI 保留 Windows 跨平台任务，防止后续改动静默移除。
+
+### Changed
+
+- README / README.en 的 CI 说明补充 Windows runner；版本 1.16.0。
+
 ## [1.15.1] - 2026-10-18
 
 ### Fixed
