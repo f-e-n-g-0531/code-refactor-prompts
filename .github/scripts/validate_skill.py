@@ -37,10 +37,12 @@ REQUIRED_FILES = [
     "examples/csharp-legacy-order-total.md",
     "examples/sql-legacy-report-equivalence.md",
     "scripts/check_prompt.py",
+    "scripts/check_sources.py",
     "scripts/compose_prompt.py",
     "scripts/fixtures/sample.go",
     "scripts/fixtures/sample.py",
     "scripts/tests/test_check_prompt.py",
+    "scripts/tests/test_check_sources.py",
     "scripts/tests/test_compose_prompt.py",
     "scripts/tests/test_batch_and_hook.py",
     "scripts/tests/test_validate_skill.py",
@@ -54,6 +56,7 @@ REQUIRED_FILES = [
     "scripts/fixtures/weak-prompt.txt",
     ".github/scripts/verify_examples.py",
     ".github/scripts/audit_templates.py",
+    ".github/workflows/link-check.yml",
 ]
 
 # Process / placeholder copy that must never leak into a released skill.
@@ -316,6 +319,8 @@ def check_ci_wiring() -> None:
         errors.append("ci.yml：缺少「Test the packaged pre-commit console script」步骤")
     if "pre-commit try-repo" not in ci:
         errors.append("ci.yml：未做 pre-commit 端到端测试（try-repo）")
+    if "check_sources.py" not in ci:
+        errors.append("ci.yml：未运行离线出处链接检查（check_sources.py）")
     release = read(".github/workflows/release.yml")
     if "pre-commit try-repo" not in release:
         errors.append("release.yml：未做 pre-commit 端到端测试（try-repo）")
@@ -359,6 +364,19 @@ def check_precommit_hook() -> None:
             errors.append(f"{workflow}：发布打包未包含 pyproject.toml（pre-commit 安装依赖它）")
 
 
+def check_link_workflow() -> None:
+    """The scheduled online link check must exist and request every URL."""
+    rel = ".github/workflows/link-check.yml"
+    if not (ROOT / rel).is_file():
+        errors.append(f"缺少 {rel}（sources.md 的在线巡检）")
+        return
+    text = read(rel)
+    if "schedule:" not in text:
+        errors.append(f"{rel}：缺少 schedule 触发器")
+    if "check_sources.py --online" not in text:
+        errors.append(f"{rel}：未运行 check_sources.py --online")
+
+
 def main() -> int:
     check_required_files()
     version = check_frontmatter()
@@ -370,6 +388,7 @@ def main() -> int:
     check_test_counts()
     check_markdown_structure()
     check_ci_wiring()
+    check_link_workflow()
     check_precommit_hook()
     check_copy()
     check_links()

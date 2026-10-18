@@ -4,7 +4,7 @@ description: Compose high-quality, behavior-preserving code refactoring prompts.
 license: MIT
 metadata:
   author: f-e-n-g-0531
-  version: "1.9.0"
+  version: "1.10.0"
 ---
 
 # 代码重构优化提示词
@@ -118,4 +118,4 @@ metadata:
 
 ## 专项变体
 
-性能优化、代码坏味道、大文件/长函数拆分、安全加固、现代化升级、分语言定制（速查）、行为基线测试、守卫（Guard Clauses）、可测试性改造、模块化/解耦、SOLID 原则、设计模式应用、技术债/遗留系统，见 `references/specialized-prompts.md`；分语言完整版见 `references/language-specific.md`；端到端流程（评审驱动、遗留代码基线、多文件分批、迭代修复）见 `references/workflows.md`；英文主模板见 `references/template-en.md`；实战样例见 `examples/`；除速查表外的每个变体都带可验证的验收锚点（CI 分级审计）；落地检查清单（发提示词前 / 应用前 / 应用后 / 合并前）见 `references/checklists.md`；依据与出处见 `references/sources.md`。
+性能优化、代码坏味道、大文件/长函数拆分、安全加固、现代化升级、分语言定制（速查）、行为基线测试、守卫（Guard Clauses）、可测试性改造、模块化/解耦、SOLID 原则、设计模式应用、技术债/遗留系统，见 `references/specialized-prompts.md`；分语言完整版见 `references/language-specific.md`；端到端流程（评审驱动、遗留代码基线、多文件分批、迭代修复）见 `references/workflows.md`；英文主模板见 `references/template-en.md`；实战样例见 `examples/`；除速查表外的每个变体都带可验证的验收锚点（CI 分级审计）；落地检查清单（发提示词前 / 应用前 / 应用后 / 合并前）见 `references/checklists.md`；依据与出处见 `references/sources.md`（`scripts/check_sources.py` 可离线 / 在线巡检链接）。

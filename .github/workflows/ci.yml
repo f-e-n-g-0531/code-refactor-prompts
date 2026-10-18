@@ -27,6 +27,9 @@ jobs:
       - name: Audit master templates and specialised variants
         run: python3 .github/scripts/audit_templates.py
 
+      - name: Check source links (offline)
+        run: python3 scripts/check_sources.py
+
       - name: Self-test prompt checker
         run: |
           set -euo pipefail

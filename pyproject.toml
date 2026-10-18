@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "code-refactor-prompts"
-version = "1.9.0"
+version = "1.10.0"
 description = "Structural self-check for high-quality, verifiable code-refactoring prompts (DSH skill tooling)."
 readme = "README.md"
 requires-python = ">=3.9"

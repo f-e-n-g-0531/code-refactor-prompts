@@ -38,12 +38,14 @@ code-refactor-prompts/
 │   └── sql-legacy-report-equivalence.md           executable: SQL golden result set + differential check
 ├── scripts/
 │   ├── check_prompt.py           structural self-check (segments / verifiability / language / anti-patterns / bilingual)
+│   ├── check_sources.py          source-link check (offline syntax / online reachability)
 │   ├── compose_prompt.py         compose a filled, self-checked prompt from a source file
 │   ├── fixtures/                 good / bad fixtures and sample sources used by CI
-│   └── tests/                    regression tests for the tooling (checker / composer / batch & hook / validator)
+│   └── tests/                    regression tests for the tooling (checker / composer / batch & hook / source links / validator)
 └── .github/
     ├── workflows/
     │   ├── ci.yml                validate + template audit + self-test + execute examples (push to main / PR)
+    │   ├── link-check.yml        weekly online source-link check
     │   └── release.yml           tag-driven automated release
     └── scripts/
         ├── validate_skill.py     structure, copy, markdown, version and test-count validation
@@ -61,11 +63,12 @@ code-refactor-prompts/
 - **Per-language guidance**: Java, Python, JS/TS, React, Go, Rust, C#, C++, SQL, Kotlin, Swift, Ruby, PHP.
 - **End-to-end workflows**: review-first, legacy baseline, multi-file batching, iterative repair.
 - **Batch checks and commit gating**: `check_prompt.py` accepts multiple files and directories (per-file PASS/FAIL plus a summary); `.pre-commit-hooks.yaml` lets pre-commit and CI gate on it directly.
-- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, the 13-language matrix and the validator itself with 49 tests, run on every CI build.
+- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 56 tests, run on every CI build.
 - **Delivery checklist**: `references/checklists.md` walks from prompt authoring to merge.
 - **One-command composition**: `scripts/compose_prompt.py --code <file>` builds a filled eight-segment prompt (Chinese or English, auto-detects 13 languages and their test commands); supplying both `--rule` (business rules) and `--case` (acceptance cases) produces a full tier-C prompt, and the result is refused unless it passes the shipped checker.
 - **Bilingual self-check**: `scripts/check_prompt.py` validates the eight segments and verifiability in Chinese and English, detects the prompt language and checks that the acceptance command matches it (e.g. Go requires `go test`), and flags anti-patterns such as "tweak the tests as well" or "rewrite the whole project". Adds `--strict` (warnings fail), `--skeleton` (print fill-in skeletons for missing segments) and `--fix` (append missing-segment skeletons to the file and re-check).
 - **Executable examples**: 6 runnable examples are run in CI by `verify_examples.py` (`go test` / `python -m unittest` / `cargo test` / `node --test` / `dotnet run` / SQLite result-set comparison), so docs cannot drift from code.
+- **Source-link checks**: `scripts/check_sources.py` validates `references/sources.md` offline for URL syntax and duplicates, and requests every URL with `--online`; CI runs the offline check on every push and a weekly `Link check` workflow catches rot.
 - **Graded audit**: `audit_templates.py` runs the full checker over the default and English master templates, checks the 12 variants that carry a prompt block for an acceptance anchor and error-level anti-patterns, and checks the guard variant for its `NO_CODE_PROVIDED` / `NO_REFACTORING_NEEDED` markers (the quick-reference section is skipped).
 - **English template**: `references/template-en.md` provides the eight-segment master template in English.
 - **Anti-misuse**: "when to downgrade", a common-bad-prompt table, and output-format options.
@@ -139,7 +142,7 @@ Then in `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.9.0
+    rev: v1.10.0
     hooks:
       - id: code-refactor-prompt-check
 ```
@@ -148,7 +151,8 @@ The repo exposes a `code-refactor-prompt-check` console script via `pyproject.to
 
 ## CI and release
 
-- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)): validates skill structure, frontmatter, version alignment, references, Markdown structure (duplicate headings) and test counts, links and copy; audits master templates and specialised variants; self-tests the prompt checker; runs the tooling regression suite; installs and tests the packaged pre-commit console script; runs the hook end to end with `pre-commit try-repo` (good prompt passes, bad prompt blocks); sets up Node 24 and executes all 6 runnable examples (go test / python unittest / cargo test / node --test / dotnet run / SQLite comparison); dry-runs packaging.
+- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)): validates skill structure, frontmatter, version alignment, references, Markdown structure (duplicate headings) and test counts, links and copy; audits master templates and specialised variants; self-tests the prompt checker; runs the tooling regression suite; checks source links offline (`check_sources.py`); installs and tests the packaged pre-commit console script; runs the hook end to end with `pre-commit try-repo` (good prompt passes, bad prompt blocks); sets up Node 24 and executes all 6 runnable examples (go test / python unittest / cargo test / node --test / dotnet run / SQLite comparison); dry-runs packaging.
+- **Link check** ([.github/workflows/link-check.yml](.github/workflows/link-check.yml)): every Monday 03:17 UTC (or manually) it requests every URL in `references/sources.md` and fails the run when a link is broken.
 - **Release** ([.github/workflows/release.yml](.github/workflows/release.yml)): on a `v*` tag it validates, audits templates, executes the examples, builds `zip` / `tar.gz` / `SHA256SUMS`, and publishes a GitHub Release.
 
 Release steps: update `CHANGELOG.md`, `metadata.version` and the `pyproject.toml` version (the validator keeps them in sync with `rev: vX.Y.Z` in both READMEs and the hook comment) → push `main` → `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`.

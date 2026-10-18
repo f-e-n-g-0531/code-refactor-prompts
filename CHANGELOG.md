@@ -2,6 +2,19 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.10.0] - 2026-10-18
+
+### Added
+
+- `scripts/check_sources.py`：出处链接巡检。默认离线校验 `references/sources.md` 中 URL 的语法、主机与去重；`--online` 逐个请求（网络错误自动重试一次，必要时回退到 `curl`，403 / 429 视为警告），支持 `--timeout` 与 `--json`，退出码 0 / 1 / 2。
+- `.github/workflows/link-check.yml`：每周一 03:17 UTC + 手动触发的在线链接巡检，逐条请求全部 21 个出处链接。
+- CI 每次 push 运行离线出处检查；`validate_skill.py` 校验巡检脚本、测试与 workflow 接线。
+- `scripts/tests/test_check_sources.py`：7 个回归用例（仓库出处离线通过、Markdown 链接与中文标点、重复 URL 计数、非法 URL、无链接、缺文件、非法超时），用例总数 49 → 56。
+
+### Changed
+
+- README / README.en 增加「出处可巡检」特性、结构树、CI 与 Link check 说明；SKILL 指向巡检脚本；版本 1.10.0。
+
 ## [1.9.0] - 2026-10-18
 
 ### Added

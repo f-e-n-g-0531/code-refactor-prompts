@@ -38,12 +38,14 @@ code-refactor-prompts/
 │   └── sql-legacy-report-equivalence.md           可执行样例（SQL 结果集 golden + 差分）
 ├── scripts/
 │   ├── check_prompt.py           生成提示词自检（八段 / 可验证 / 语言匹配 / 反模式 / 双语）
+│   ├── check_sources.py          出处链接巡检（离线语法 / 在线可达性）
 │   ├── compose_prompt.py         从源码文件一键生成「已填好且自检通过」的提示词
 │   ├── fixtures/                 正例 / 反例 / 示例源码（CI 自测用）
-│   └── tests/                    工具链回归测试（检查器 / 生成器 / 批量与钩子 / 校验脚本）
+│   └── tests/                    工具链回归测试（检查器 / 生成器 / 批量与钩子 / 出处链接 / 校验脚本）
 └── .github/
     ├── workflows/
     │   ├── ci.yml                校验 + 模板审计 + 自测 + 样例实跑（push 到 main / PR）
+    │   ├── link-check.yml        每周在线巡检 sources.md 外链
     │   └── release.yml           推送 v* 标签自动发布
     └── scripts/
         ├── validate_skill.py     结构 / 文案 / 文档结构 / 版本与用例数校验
@@ -61,11 +63,12 @@ code-refactor-prompts/
 - **端到端工作流**：评审驱动重构、遗留代码先锁行为基线、多文件分批验收、AI 输出后的迭代修复。
 - **分语言定制**：Java / Python / JS-TS / React / Go / Rust / C# / C++ / SQL / Kotlin / Swift / Ruby / PHP 的惯用手法、测试命令与红线。
 - **批量与门禁**：`check_prompt.py` 支持多文件 / 目录批量检查（逐文件 PASS/FAIL + 汇总），附 `.pre-commit-hooks.yaml`，pre-commit / CI 可直接接入。
-- **工具链回归测试**：`scripts/tests/` 以 49 个用例覆盖检查器、生成器（含 C 档）、`--fix` 闭环、13 语言矩阵与校验脚本自身，CI 每次运行。
+- **工具链回归测试**：`scripts/tests/` 以 56 个用例覆盖检查器、生成器（含 C 档）、`--fix` 闭环、出处链接巡检、13 语言矩阵与校验脚本自身，CI 每次运行。
 - **落地清单**：`references/checklists.md` 给出「发提示词前 → 应用前 → 应用后 → 合并前」四段检查清单。
 - **一键生成**：`scripts/compose_prompt.py --code <文件>` 从源码文件生成填好的八段提示词（中 / 英，自动识别 13 种语言与测试命令）；同时提供 `--rule`（业务规则）与 `--case`（验收用例）时直接生成完整 C 档；生成结果先过检查器，不合规就拒绝输出。
 - **可自检（双语）**：`scripts/check_prompt.py` 检查八段、可验证验收与守卫；自动识别中英文段落与提示词语言，校验验收命令是否匹配（如 Go 必须写 `go test`），拦截「顺便改测试」「整体重写」「空泛指标」等中英文反模式；支持 `--strict`（警告即失败）、`--skeleton`（打印缺失段落骨架）与 `--fix`（把缺失段落骨架追加到文件并复查）。
 - **样例可执行**：6 个跨语言 / 跨领域样例由 CI 用 `verify_examples.py` 真实执行（`go test` / `python -m unittest` / `cargo test` / `node --test` / `dotnet run` / SQLite 结果集对比），文档与代码不会脱节。
+- **出处可巡检**：`scripts/check_sources.py` 离线校验 `references/sources.md` 的链接语法与去重，`--online` 逐个请求；CI 每次跑离线检查，另有每周 `Link check` workflow 在线巡检，防止出处腐烂。
 - **分级审计**：`audit_templates.py` 用同一检查器审计 SKILL.md 默认模板与英文模板（完整八段检查）；12 个含提示词块的专项变体检查「验收锚点」与 error 级反模式（第 6 节为速查表），守卫变体改查 `NO_CODE_PROVIDED` / `NO_REFACTORING_NEEDED`——主模板和变体的质量都不靠自觉。
 - **英文模板**：`references/template-en.md` 提供八段式英文主模板，便于英文代码库与评审流程直接使用。
 - **防误用**：给出「何时降档 / 不适用」「常见错误提示词（反例 → 修正）」与输出格式约定。
@@ -140,7 +143,7 @@ pre-commit install
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.9.0
+    rev: v1.10.0
     hooks:
       - id: code-refactor-prompt-check
 ```
@@ -149,7 +152,8 @@ repos:
 
 ## CI 与发布
 
-- **CI**（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：push 到 main / PR 时校验技能结构、frontmatter、版本一致性、引用完整性、Markdown 文档结构（重复标题）与用例数、相对链接及禁止的过程性文案；对模板与专项变体做分级审计；自测提示词检查器；运行工具链回归测试；安装并测试打包后的 pre-commit console script；用 `pre-commit try-repo` 做钩子端到端验证（好提示词通过、坏提示词阻断）；配置 Node 24 并实际执行全部 6 个可执行样例（go test / python unittest / cargo test / node --test / dotnet run / SQLite 结果集对比）；并 dry-run 一次发布打包。
+- **CI**（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：push 到 main / PR 时校验技能结构、frontmatter、版本一致性、引用完整性、Markdown 文档结构（重复标题）与用例数、相对链接及禁止的过程性文案；对模板与专项变体做分级审计；自测提示词检查器；运行工具链回归测试；离线检查出处链接（`check_sources.py`）；安装并测试打包后的 pre-commit console script；用 `pre-commit try-repo` 做钩子端到端验证（好提示词通过、坏提示词阻断）；配置 Node 24 并实际执行全部 6 个可执行样例（go test / python unittest / cargo test / node --test / dotnet run / SQLite 结果集对比）；并 dry-run 一次发布打包。
+- **Link check**（[.github/workflows/link-check.yml](.github/workflows/link-check.yml)）：每周一 03:17 UTC（可手动触发）在线请求 `references/sources.md` 的全部链接，失败即报红。
 - **Release**（[.github/workflows/release.yml](.github/workflows/release.yml)）：推送 `v*` 标签后自动校验、审计模板、实跑样例、打包（`zip` / `tar.gz` / `SHA256SUMS`）并创建 GitHub Release。
 
 发布流程：
