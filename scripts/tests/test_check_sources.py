@@ -96,6 +96,11 @@ class SourceCheckTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("--timeout", result.stderr)
 
+    def test_invalid_jobs_is_usage_error(self):
+        result = run("--jobs", "0")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--jobs", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

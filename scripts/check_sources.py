@@ -7,7 +7,8 @@ with a host and reports how many references were found. Online mode
 meant for the scheduled "Link check" workflow, not for every push.
 
 Usage:
-    python3 scripts/check_sources.py [paths...] [--online] [--timeout SECONDS] [--json]
+    python3 scripts/check_sources.py [paths...] [--online] [--timeout SECONDS]
+                                    [--jobs N] [--json]
 
 Exit codes: 0 = all good, 1 = problems found, 2 = usage / input error.
 """
@@ -22,6 +23,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+from concurrent.futures import ThreadPoolExecutor
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -142,11 +144,17 @@ def main() -> int:
     parser.add_argument("paths", nargs="*", help="files to scan (default: references/sources.md)")
     parser.add_argument("--online", action="store_true", help="request every URL (scheduled workflow)")
     parser.add_argument("--timeout", type=float, default=10.0, help="per-request timeout in seconds")
+    parser.add_argument(
+        "--jobs", type=int, default=8, help="parallel requests in --online mode (default: 8)"
+    )
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args()
 
     if args.timeout <= 0:
         print("--timeout must be positive", file=sys.stderr)
+        return 2
+    if args.jobs <= 0:
+        print("--jobs must be positive", file=sys.stderr)
         return 2
 
     paths = args.paths or [str(DEFAULT_SOURCES)]
@@ -166,15 +174,26 @@ def main() -> int:
         return 1
 
     entries: list[dict] = []
-    for url in urls:
-        problem = validate(url)
-        if problem:
-            entries.append({"url": url, "status": "invalid", "detail": problem})
-        elif args.online:
-            status, detail = check_online(url, args.timeout)
-            entries.append({"url": url, "status": status, "detail": detail})
-        else:
-            entries.append({"url": url, "status": "pass", "detail": "syntax OK"})
+    if args.online:
+        valid = [url for url in urls if validate(url) is None]
+        with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+            checked = dict(
+                zip(valid, pool.map(lambda url: check_online(url, args.timeout), valid))
+            )
+        for url in urls:
+            problem = validate(url)
+            if problem:
+                entries.append({"url": url, "status": "invalid", "detail": problem})
+            else:
+                status, detail = checked[url]
+                entries.append({"url": url, "status": status, "detail": detail})
+    else:
+        for url in urls:
+            problem = validate(url)
+            if problem:
+                entries.append({"url": url, "status": "invalid", "detail": problem})
+            else:
+                entries.append({"url": url, "status": "pass", "detail": "syntax OK"})
 
     passed = sum(1 for entry in entries if entry["status"] == "pass")
     warned = sum(1 for entry in entries if entry["status"] == "warn")

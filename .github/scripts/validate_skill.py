@@ -18,6 +18,7 @@ REQUIRED_FILES = [
     "SKILL.md",
     "README.md",
     "README.en.md",
+    "CONTRIBUTING.md",
     "CHANGELOG.md",
     "LICENSE",
     ".gitignore",
@@ -40,12 +41,14 @@ REQUIRED_FILES = [
     "scripts/check_prompt.py",
     "scripts/check_sources.py",
     "scripts/compose_prompt.py",
+    "scripts/run_checks.py",
     "scripts/fixtures/sample.go",
     "scripts/fixtures/sample.py",
     "scripts/tests/test_check_prompt.py",
     "scripts/tests/test_check_sources.py",
     "scripts/tests/test_compose_prompt.py",
     "scripts/tests/test_batch_and_hook.py",
+    "scripts/tests/test_run_checks.py",
     "scripts/tests/test_validate_skill.py",
     "scripts/fixtures/good-prompt.txt",
     "scripts/fixtures/good-go-prompt.txt",
@@ -329,6 +332,8 @@ def check_ci_wiring() -> None:
         errors.append("ci.yml：未做 pre-commit 端到端测试（try-repo）")
     if "check_sources.py" not in ci:
         errors.append("ci.yml：未运行离线出处链接检查（check_sources.py）")
+    if "run_checks.py --list" not in ci:
+        errors.append("ci.yml：未验证一键本地门禁接线（run_checks.py --list）")
     if "--format github" not in ci:
         errors.append("ci.yml：未自测 GitHub 注解输出（--format github）")
     release = read(".github/workflows/release.yml")

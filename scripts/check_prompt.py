@@ -472,9 +472,31 @@ def print_result(result: dict, blocks: list[str] | None = None) -> None:
             print(block)
 
 
-def finding_line(text: str, code: str) -> int | None:
+def missing_segment_line(text: str, label: str) -> int:
+    """Estimate where a missing segment should start, for GitHub annotations."""
+    labels = [segment_label for _key, segment_label, _pattern in SEGMENTS]
+    if label not in labels:
+        return 1
+    index = labels.index(label)
+    positions: list[int | None] = []
+    for _key, _segment_label, pattern in SEGMENTS:
+        match = re.search(pattern, text, re.S | re.I)
+        positions.append(text[: match.start()].count("\n") + 1 if match else None)
+    for later in positions[index + 1 :]:
+        if later:
+            return max(1, later - 1)
+    for earlier in reversed(positions[:index]):
+        if earlier:
+            return earlier
+    return 1
+
+
+def finding_line(text: str, code: str, message: str = "") -> int | None:
     """Best-effort line number for a finding (used by GitHub annotations)."""
     code = code.removeprefix("strict-")
+    if code == "missing-segment":
+        match = re.search(r"缺少段落：(.+)$", message)
+        return missing_segment_line(text, match.group(1)) if match else 1
     if code == "empty-code-section":
         match = CODE_HEADING.search(text)
     elif code == "acceptance-section-unverifiable":
@@ -591,7 +613,7 @@ def run_batch(
                 for item in result["errors"]:
                     print(
                         github_annotation(
-                            "error", str(file), item["message"], finding_line(text, item["code"])
+                            "error", str(file), item["message"], finding_line(text, item["code"], item["message"])
                         )
                     )
                 for warning in result["warnings"]:
@@ -600,7 +622,7 @@ def run_batch(
                             "warning",
                             str(file),
                             warning["message"],
-                            finding_line(text, warning["code"]),
+                            finding_line(text, warning["code"], warning["message"]),
                         )
                     )
             else:
@@ -768,13 +790,13 @@ def main() -> int:
         for item in result["errors"]:
             print(
                 github_annotation(
-                    "error", label, item["message"], finding_line(text, item["code"])
+                    "error", label, item["message"], finding_line(text, item["code"], item["message"])
                 )
             )
         for item in result["warnings"]:
             print(
                 github_annotation(
-                    "warning", label, item["message"], finding_line(text, item["code"])
+                    "warning", label, item["message"], finding_line(text, item["code"], item["message"])
                 )
             )
         print(

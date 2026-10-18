@@ -17,6 +17,7 @@ code-refactor-prompts/
 ├── README.md                     中文说明
 ├── README.en.md                  英文说明
 ├── CHANGELOG.md                  版本记录（遵循 SemVer）
+├── CONTRIBUTING.md               贡献指南（本地门禁、约定、发布流程）
 ├── LICENSE                       MIT 许可
 ├── .gitignore
 ├── .pre-commit-hooks.yaml        pre-commit 钩子定义（安装 console script 后批量检查）
@@ -41,8 +42,9 @@ code-refactor-prompts/
 │   ├── check_prompt.py           生成提示词自检（八段 / 可验证 / 语言匹配 / 反模式 / 双语）
 │   ├── check_sources.py          出处链接巡检（离线语法 / 在线可达性）
 │   ├── compose_prompt.py         从源码文件一键生成「已填好且自检通过」的提示词
+│   ├── run_checks.py             一键本地门禁（校验 / 审计 / 测试 / 链接，--full 跑样例）
 │   ├── fixtures/                 正例 / 反例 / 示例源码（CI 自测用）
-│   └── tests/                    工具链回归测试（检查器 / 生成器 / 批量与钩子 / 出处链接 / 校验脚本）
+│   └── tests/                    工具链回归测试（检查器 / 生成器 / 批量与钩子 / 出处链接 / 门禁 / 校验脚本）
 └── .github/
     ├── workflows/
     │   ├── ci.yml                校验 + 模板审计 + 自测 + 样例实跑（push 到 main / PR）
@@ -65,7 +67,8 @@ code-refactor-prompts/
 - **分语言定制**：Java / Python / JS-TS / React / Go / Rust / C# / C++ / SQL / Kotlin / Swift / Ruby / PHP 的惯用手法、测试命令与红线。
 - **批量与门禁**：`check_prompt.py` 支持多文件 / 目录批量检查（逐文件 PASS/FAIL + 汇总），附 `.pre-commit-hooks.yaml`，pre-commit / CI 可直接接入。
 - **PR 门禁（GitHub Actions）**：根目录 `action.yml` 在 PR 中运行检查器，并以 `--format github` 将问题注解到对应文件；`changed-only: true` 时只检查本次 PR 变更的提示词文件。
-- **工具链回归测试**：`scripts/tests/` 以 69 个用例覆盖检查器、生成器（含 C 档）、`--fix` 闭环、出处链接巡检、13 语言矩阵与校验脚本自身，CI 每次运行。
+- **工具链回归测试**：`scripts/tests/` 以 73 个用例覆盖检查器、生成器（含 C 档）、`--fix` 闭环、出处链接巡检、13 语言矩阵与校验脚本自身，CI 每次运行。
+- **一键本地门禁**：`scripts/run_checks.py` 串行执行结构校验、模板审计、工具链测试与出处离线检查；`--full` 额外真实执行全部可执行样例，`--list` 只列步骤。
 - **落地清单**：`references/checklists.md` 给出「发提示词前 → 应用前 → 应用后 → 合并前」四段检查清单。
 - **一键生成**：`scripts/compose_prompt.py --code <文件>` 从源码文件生成填好的八段提示词（中 / 英，自动识别 13 种语言与测试命令）；同时提供 `--rule`（业务规则）与 `--case`（验收用例）时直接生成完整 C 档，`--require-c-tier` 可强制要求两者（关键重构门禁）；生成结果先过检查器，不合规就拒绝输出。
 - **可自检（双语）**：`scripts/check_prompt.py` 检查八段、可验证验收与守卫，并校验代码段是否真的含代码（或 `{粘贴代码}` 占位符）、验收命令是否写在验收段；自动识别中英文段落与提示词语言，校验验收命令是否匹配（如 Go 必须写 `go test`），拦截「顺便改测试」「整体重写」「空泛指标」等中英文反模式；支持 `--strict`（警告即失败）、`--skeleton`（打印缺失段落骨架）与 `--fix`（把缺失段落骨架追加到文件并复查）。
@@ -146,7 +149,7 @@ pre-commit install
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.14.0
+    rev: v1.15.0
     hooks:
       - id: code-refactor-prompt-check
 ```
@@ -167,7 +170,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0        # changed-only 需要完整历史
-      - uses: f-e-n-g-0531/code-refactor-prompts@v1.14.0
+      - uses: f-e-n-g-0531/code-refactor-prompts@v1.15.0
         with:
           changed-only: true     # 只检查本 PR 变更的提示词；不设置时检查 files（默认整个仓库）
           strict: true           # 警告也算失败
@@ -183,10 +186,14 @@ jobs:
 
 发布流程：
 
-1. 更新 `CHANGELOG.md`、`SKILL.md` 的 `metadata.version` 与 `pyproject.toml` 的 `version`（校验脚本会强制它们与两个 README、钩子注释中的 `rev: vX.Y.Z` 一致）；
+1. 更新 `CHANGELOG.md`、`SKILL.md` 的 `metadata.version`、`pyproject.toml` 的 `version`，以及两个 README 中的 `rev: vX.Y.Z` / Action 示例 `@vX.Y.Z` 与钩子注释（校验脚本会强制一致）；
 2. 提交并推送 `main`；
 3. 打标签并推送：`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`；
 4. GitHub Actions 自动产出 Release 与附件。
+
+## 贡献
+
+见 [CONTRIBUTING.md](CONTRIBUTING.md)：本地一键门禁 `python3 scripts/run_checks.py --full`；版本号、`rev`、Action 示例版本与测试数均由 `validate_skill.py` 强制同步。
 
 ## 许可
 

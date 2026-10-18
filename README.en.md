@@ -17,6 +17,7 @@ code-refactor-prompts/
 ├── README.md                     Chinese README
 ├── README.en.md                  English README
 ├── CHANGELOG.md                  release history (SemVer)
+├── CONTRIBUTING.md               contributor guide (local gate, conventions, release)
 ├── LICENSE                       MIT
 ├── .gitignore
 ├── .pre-commit-hooks.yaml        pre-commit hook definition (batch check via console script)
@@ -41,8 +42,9 @@ code-refactor-prompts/
 │   ├── check_prompt.py           structural self-check (segments / verifiability / language / anti-patterns / bilingual)
 │   ├── check_sources.py          source-link check (offline syntax / online reachability)
 │   ├── compose_prompt.py         compose a filled, self-checked prompt from a source file
+│   ├── run_checks.py             one-command local gate (validate / audit / tests / links; --full runs examples)
 │   ├── fixtures/                 good / bad fixtures and sample sources used by CI
-│   └── tests/                    regression tests for the tooling (checker / composer / batch & hook / source links / validator)
+│   └── tests/                    regression tests for the tooling (checker / composer / batch & hook / source links / gate / validator)
 └── .github/
     ├── workflows/
     │   ├── ci.yml                validate + template audit + self-test + execute examples (push to main / PR)
@@ -65,7 +67,8 @@ code-refactor-prompts/
 - **End-to-end workflows**: review-first, legacy baseline, multi-file batching, iterative repair.
 - **Batch checks and commit gating**: `check_prompt.py` accepts multiple files and directories (per-file PASS/FAIL plus a summary); `.pre-commit-hooks.yaml` lets pre-commit and CI gate on it directly.
 - **PR gate (GitHub Actions)**: the root `action.yml` checks prompts in a pull request and annotates findings on the matching files via `--format github`; with `changed-only: true` it checks only the prompt files changed in that PR.
-- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 69 tests, run on every CI build.
+- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 73 tests, run on every CI build.
+- **One-command local gate**: `scripts/run_checks.py` runs structure validation, template audit, tooling tests and the offline source-link check; `--full` also executes every runnable example, `--list` prints the steps.
 - **Delivery checklist**: `references/checklists.md` walks from prompt authoring to merge.
 - **One-command composition**: `scripts/compose_prompt.py --code <file>` builds a filled eight-segment prompt (Chinese or English, auto-detects 13 languages and their test commands); supplying both `--rule` (business rules) and `--case` (acceptance cases) produces a full tier-C prompt (`--require-c-tier` refuses to emit unless both are supplied), and the result is refused unless it passes the shipped checker.
 - **Bilingual self-check**: `scripts/check_prompt.py` validates the eight segments and verifiability in Chinese and English, checks that the code section contains code (or a paste placeholder) and that the acceptance command / cases live in the acceptance section, detects the prompt language and checks that the acceptance command matches it (e.g. Go requires `go test`), and flags anti-patterns such as "tweak the tests as well" or "rewrite the whole project". Adds `--strict` (warnings fail), `--skeleton` (print fill-in skeletons for missing segments) and `--fix` (append missing-segment skeletons to the file and re-check).
@@ -145,7 +148,7 @@ Then in `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.14.0
+    rev: v1.15.0
     hooks:
       - id: code-refactor-prompt-check
 ```
@@ -166,7 +169,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0        # changed-only needs the full history
-      - uses: f-e-n-g-0531/code-refactor-prompts@v1.14.0
+      - uses: f-e-n-g-0531/code-refactor-prompts@v1.15.0
         with:
           changed-only: true     # only prompts changed in this PR; otherwise files is used (repo root by default)
           strict: true           # warnings fail too
@@ -180,7 +183,11 @@ Requires a Linux / macOS runner (bash + python3). Local equivalent: `python3 scr
 - **Link check** ([.github/workflows/link-check.yml](.github/workflows/link-check.yml)): every Monday 03:17 UTC (or manually) it requests every URL in `references/sources.md` and fails the run when a link is broken.
 - **Release** ([.github/workflows/release.yml](.github/workflows/release.yml)): on a `v*` tag it validates, audits templates, executes the examples, builds `zip` / `tar.gz` / `SHA256SUMS`, and publishes a GitHub Release.
 
-Release steps: update `CHANGELOG.md`, `metadata.version` and the `pyproject.toml` version (the validator keeps them in sync with `rev: vX.Y.Z` in both READMEs and the hook comment) → push `main` → `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`.
+Release steps: update `CHANGELOG.md`, `metadata.version`, the `pyproject.toml` version and the version references in both READMEs (`rev: vX.Y.Z` and the Action example `@vX.Y.Z`) plus the hook comment (the validator keeps them in sync) → push `main` → `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md): run `python3 scripts/run_checks.py --full` locally; version references and the advertised test count are enforced by `validate_skill.py`.
 
 ## License
 

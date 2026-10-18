@@ -363,6 +363,13 @@ class CliTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIsNotNone(re.search(r"::error file=.+,line=\d+::", result.stdout))
 
+    def test_github_format_missing_segments_have_lines(self):
+        result = run_checker("--format", "github", str(FIXTURES / "bad-prompt.txt"))
+        self.assertEqual(result.returncode, 1)
+        self.assertIsNotNone(
+            re.search(r"::error file=.+,line=\d+::缺少段落", result.stdout)
+        )
+
     def test_github_format_batch_includes_line_numbers(self):
         with tempfile.TemporaryDirectory() as raw:
             target = Path(raw) / "bad.prompt.txt"

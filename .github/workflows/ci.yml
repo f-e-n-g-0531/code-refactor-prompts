@@ -24,6 +24,9 @@ jobs:
       - name: Validate structure, frontmatter, links and copy
         run: python3 .github/scripts/validate_skill.py
 
+      - name: Check the local gate wiring
+        run: python3 scripts/run_checks.py --list
+
       - name: Audit master templates and specialised variants
         run: python3 .github/scripts/audit_templates.py
 
@@ -79,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           output="$(python3 scripts/check_prompt.py --format github scripts/fixtures/bad-prompt.txt || true)"
-          grep -q '::error file=scripts/fixtures/bad-prompt.txt::' <<< "$output"
+          grep -Eq '::error file=scripts/fixtures/bad-prompt\.txt(,line=[0-9]+)?::' <<< "$output"
           if python3 scripts/check_prompt.py --format github --json scripts/fixtures/good-prompt.txt; then
             echo "::error::--format github must not combine with --json"
             exit 1
