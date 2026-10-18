@@ -194,3 +194,6 @@ jobs:
             Write-Error "the console script must reject a bad prompt"
             exit 1
           }
+          # The bad prompt is expected to fail; reset the exit code so pwsh does
+          # not mark the whole step as failed on its final command.
+          exit 0

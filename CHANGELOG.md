@@ -2,6 +2,13 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.16.1] - 2026-10-18
+
+### Fixed
+
+- 修复 Windows CI 任务误报失败：`Test tooling on Windows` 步骤最后一条命令是「坏提示词应当被拒绝」（退出码 1），GitHub 的 pwsh 包装器会据此判定整个 step 失败；现显式 `exit 0`，并保留坏提示词断言（若意外通过则报错）。
+- v1.16.0 的 Ubuntu 校验与 Release 均正常，此修复只影响 Windows 任务判定。
+
 ## [1.16.0] - 2026-10-18
 
 ### Added

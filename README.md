@@ -149,7 +149,7 @@ pre-commit install
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.16.0
+    rev: v1.16.1
     hooks:
       - id: code-refactor-prompt-check
 ```
@@ -170,7 +170,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0        # changed-only 需要完整历史
-      - uses: f-e-n-g-0531/code-refactor-prompts@v1.16.0
+      - uses: f-e-n-g-0531/code-refactor-prompts@v1.16.1
         with:
           changed-only: true     # 只检查本 PR 变更的提示词；不设置时检查 files（默认整个仓库）
           strict: true           # 警告也算失败
