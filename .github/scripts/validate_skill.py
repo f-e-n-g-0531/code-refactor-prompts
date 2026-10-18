@@ -22,6 +22,7 @@ REQUIRED_FILES = [
     "LICENSE",
     ".gitignore",
     ".pre-commit-hooks.yaml",
+    "pyproject.toml",
     "references/specialized-prompts.md",
     "references/language-specific.md",
     "references/sources.md",
@@ -41,6 +42,8 @@ REQUIRED_FILES = [
     "scripts/fixtures/sample.py",
     "scripts/tests/test_check_prompt.py",
     "scripts/tests/test_compose_prompt.py",
+    "scripts/tests/test_batch_and_hook.py",
+    "scripts/tests/test_validate_skill.py",
     "scripts/fixtures/good-prompt.txt",
     "scripts/fixtures/good-go-prompt.txt",
     "scripts/fixtures/good-en-prompt.txt",
@@ -157,6 +160,82 @@ def check_counts() -> None:
     claimed = re.search(r"(\d+)\s*runnable examples", readme_en)
     if claimed and int(claimed.group(1)) != executable:
         errors.append(f"README.en 声称 {claimed.group(1)} 个可执行样例，实际 {executable} 个")
+    claimed = re.search(r"(\d+)\s+specialised", readme_en)
+    if claimed and int(claimed.group(1)) != variants:
+        errors.append(f"README.en 声称 {claimed.group(1)} 个专项变体，实际 {variants} 个")
+    claimed = re.search(r"(\d+)\s+sources", readme_en)
+    if claimed and int(claimed.group(1)) != sources:
+        errors.append(f"README.en 声称 {claimed.group(1)} 条出处，实际 {sources} 条")
+
+
+def count_test_methods() -> int:
+    total = 0
+    for path in sorted((ROOT / "scripts" / "tests").glob("test_*.py")):
+        total += len(re.findall(r"^\s+def test_", path.read_text(encoding="utf-8"), re.M))
+    return total
+
+
+def check_test_counts() -> None:
+    """The test count advertised in the READMEs must match the actual test methods."""
+    actual = count_test_methods()
+    for rel, pattern in (
+        ("README.md", r"以\s*(\d+)\s*个用例"),
+        ("README.en.md", r"with\s+(\d+)\s+tests"),
+    ):
+        claimed = re.search(pattern, read(rel))
+        if claimed and int(claimed.group(1)) != actual:
+            errors.append(f"{rel} 声称 {claimed.group(1)} 个用例，实际 {actual} 个")
+
+
+def strip_fenced_blocks(text: str) -> str:
+    """Blank out fenced code blocks so headings inside code samples are ignored."""
+    lines: list[str] = []
+    in_fence = False
+    for line in text.splitlines():
+        if re.match(r"^\s*(```|~~~)", line):
+            in_fence = not in_fence
+            lines.append("")
+        else:
+            lines.append("" if in_fence else line)
+    return "\n".join(lines)
+
+
+def check_markdown_structure() -> None:
+    """Every Markdown document needs one H1 and must not repeat H2 section titles.
+
+    A repeated H2 is the fingerprint of an accidental full-document paste (the
+    v1.8.0 README duplication), which link/count checks alone cannot detect.
+    """
+    for path in iter_markdown():
+        rel = path.relative_to(ROOT).as_posix()
+        text = strip_fenced_blocks(path.read_text(encoding="utf-8"))
+        h1 = re.findall(r"^# \S.*$", text, re.M)
+        if len(h1) != 1:
+            errors.append(f"{rel}：应恰好有 1 个一级标题，实际 {len(h1)} 个")
+        h2 = re.findall(r"^## \S.*$", text, re.M)
+        for heading in sorted({h for h in h2 if h2.count(h) > 1}):
+            errors.append(f"{rel}：二级标题重复「{heading[3:].strip()}」（疑似整段内容被重复粘贴）")
+
+
+def check_version_refs(version: str | None) -> None:
+    """Version references in the docs and hook comment must track metadata.version."""
+    if not version:
+        return
+    for rel in ("README.md", "README.en.md", ".pre-commit-hooks.yaml"):
+        found = re.findall(r"rev:\s*v(\d+\.\d+\.\d+)", read(rel))
+        if not found:
+            errors.append(f"{rel}：缺少 rev: v{version} 版本引用")
+        for got in found:
+            if got != version:
+                errors.append(f"{rel}：rev: v{got} 与 SKILL.md 的 metadata.version {version} 不一致")
+    pyproject = read("pyproject.toml")
+    declared = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.M)
+    if not declared:
+        errors.append("pyproject.toml：缺少 version（应与 SKILL.md 的 metadata.version 一致）")
+    elif declared.group(1) != version:
+        errors.append(
+            f"pyproject.toml：version {declared.group(1)} 与 SKILL.md 的 metadata.version {version} 不一致"
+        )
 
 
 def iter_markdown():
@@ -223,6 +302,8 @@ def check_ci_wiring() -> None:
         errors.append("ci.yml：未自测 check_prompt.py --fix（修复闭环未验证）")
     if "scripts/tests" not in ci:
         errors.append("ci.yml：未运行工具链回归测试（scripts/tests）")
+    if "code-refactor-prompt-check" not in ci:
+        errors.append("ci.yml：未测试打包后的 pre-commit console script（code-refactor-prompt-check）")
     for fixture in (
         "good-prompt.txt",
         "good-go-prompt.txt",
@@ -238,26 +319,39 @@ def check_ci_wiring() -> None:
 
 
 def check_precommit_hook() -> None:
-    """The pre-commit hook must ship, call the checker in strict mode, and be packaged."""
+    """The pre-commit hook must ship, call the installed console script, and be packaged."""
     hooks = read(".pre-commit-hooks.yaml")
-    if "scripts/check_prompt.py --strict" not in hooks:
-        errors.append(".pre-commit-hooks.yaml：entry 应调用 scripts/check_prompt.py --strict")
+    if "entry: code-refactor-prompt-check --strict" not in hooks:
+        errors.append(".pre-commit-hooks.yaml：entry 应调用已安装的 console script code-refactor-prompt-check --strict")
+    if "language: python" not in hooks:
+        errors.append(".pre-commit-hooks.yaml：应为 language: python（由 pyproject.toml 安装 console script）")
     if "pass_filenames: true" not in hooks:
         errors.append(".pre-commit-hooks.yaml：应设置 pass_filenames: true")
     if "files:" not in hooks:
         errors.append(".pre-commit-hooks.yaml：缺少 files 匹配规则")
+    pyproject = read("pyproject.toml")
+    if 'code-refactor-prompt-check = "check_prompt:main"' not in pyproject:
+        errors.append("pyproject.toml：缺少 [project.scripts] code-refactor-prompt-check = \"check_prompt:main\"")
+    if "py-modules" not in pyproject or "check_prompt" not in pyproject:
+        errors.append("pyproject.toml：未声明 check_prompt 模块（py-modules / package-dir）")
     for workflow in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
-        if ".pre-commit-hooks.yaml" not in read(workflow):
+        text = read(workflow)
+        if ".pre-commit-hooks.yaml" not in text:
             errors.append(f"{workflow}：发布打包未包含 .pre-commit-hooks.yaml")
+        if "pyproject.toml" not in text:
+            errors.append(f"{workflow}：发布打包未包含 pyproject.toml（pre-commit 安装依赖它）")
 
 
 def main() -> int:
     check_required_files()
     version = check_frontmatter()
     check_version(version)
+    check_version_refs(version)
     check_references_wired()
     check_counts()
     check_examples()
+    check_test_counts()
+    check_markdown_structure()
     check_ci_wiring()
     check_precommit_hook()
     check_copy()

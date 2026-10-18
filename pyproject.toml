@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "code-refactor-prompts"
+version = "1.8.1"
+description = "Structural self-check for high-quality, verifiable code-refactoring prompts (DSH skill tooling)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "f-e-n-g-0531" }]
+
+[project.scripts]
+code-refactor-prompt-check = "check_prompt:main"
+
+[tool.setuptools]
+package-dir = { "" = "scripts" }
+py-modules = ["check_prompt"]

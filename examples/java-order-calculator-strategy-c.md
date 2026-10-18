@@ -72,7 +72,7 @@ public class OrderCalculator {
 3. 遵循现有 Java 编码规范与命名风格。
 
 【重构目标】
-0. 先为现有行为生成「行为基线测试」，把下方 3 条用例锚成可运行断言；
+0. 先为现有行为生成「行为基线测试」，把下方 4 条用例锚成可运行断言；
 1. 提取子方法，降低嵌套深度（5 层 → 1 层）；
 2. 消除重复逻辑，分类折扣 / 税费 / 运费各司其职；
 3. 用具名常量替换魔法数字。
@@ -81,12 +81,13 @@ public class OrderCalculator {
 - 测试命令：mvn test（或 JUnit 单独跑 calculateTotal）
 - 用例：
   - 空订单 → 0；
-  - 单本图书 100 × 1 → 100 × 0.9 × 0.98 × 1.08 + 5；
-  - 电子产品 200 × 2 → 400 × 0.95 × 0.98 × 1.2 + 5。
+  - 单本图书 100 × 1 → 100 × 0.9 × 1.08 + 5 = 102.2（折后 90，不触发 > 100 的满减）；
+  - 电子产品 200 × 2 → 400 × 0.95 × 0.98 × 1.2 + 5 = 451.88；
+  - 商品分类为 null → 与原实现一致（抛 NullPointerException）；若业务希望改为不打折，属行为变更，另开变更单。
 
 【输出格式】
 1. 问题清单：问题 → 严重度 → 位置；
-2. 重构后的完整代码（用 diff 展示改动）；
+2. 重构后的完整代码，并用 diff 标出关键改动（声明基线文件）；
 3. 表格：每处改动 → 改了什么 → 为什么 → 影响面；
 4. 风险提示：哪些改动有兼容性风险。
 ```
@@ -116,8 +117,9 @@ public class OrderCalculator {
     }
 
     private double applyCategoryDiscount(double price, String category) {
-        if ("BOOK".equals(category)) return price * 0.9;
-        if ("ELECTRONICS".equals(category)) return price * 0.95;
+        // category.equals(...) 有意保留原实现在 category 为 null 时抛 NPE 的行为
+        if (category.equals("BOOK")) return price * 0.9;
+        if (category.equals("ELECTRONICS")) return price * 0.95;
         return price;
     }
 
@@ -140,5 +142,5 @@ public class OrderCalculator {
 
 - 每个方法职责单一、可独立测试；嵌套从 5 层降到 1 层。
 - 计算顺序（小计 → 满减 → 税 → 运费）被显式化，语义一目了然。
-- `"BOOK".equals(category)` 把「category 为 null 会抛 NPE」改为「视为不打折」——这是一处**有意的行为收紧**，属于主模板【输出格式】第 4 条要求明示的「风险提示/改动说明」。
-- 验收标准里的 3 个用例可机械核对行为等价，正是「能跑」与「可靠」的分水岭。
+- `category.equals("BOOK")` 保留原实现在 category 为 null 时抛 NPE 的行为：行为等价包括异常行为，不能借重构顺手「修 bug」；确需改为不打折时，应单开行为变更单并补对应用例。
+- 验收标准里的 4 个用例（含异常行为）可机械核对行为等价，正是「能跑」与「可靠」的分水岭。

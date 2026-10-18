@@ -75,6 +75,18 @@ jobs:
       - name: Test the prompt tooling
         run: python3 -m unittest discover -s scripts/tests -p "test_*.py" -v
 
+      - name: Test the packaged pre-commit console script
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/precommit-venv
+          /tmp/precommit-venv/bin/pip install --quiet --disable-pip-version-check .
+          /tmp/precommit-venv/bin/code-refactor-prompt-check --strict scripts/fixtures/good-prompt.txt
+          if /tmp/precommit-venv/bin/code-refactor-prompt-check --strict scripts/fixtures/bad-prompt.txt; then
+            echo "::error::the console script must reject a bad prompt"
+            exit 1
+          fi
+          echo "pre-commit console script OK"
+
       - name: Set up Node.js for the TypeScript example
         uses: actions/setup-node@v4
         with:
@@ -88,7 +100,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           git archive --format=zip --prefix=code-refactor-prompts/ -o dist/skill.zip HEAD \
-            SKILL.md README.md README.en.md CHANGELOG.md LICENSE .gitignore .pre-commit-hooks.yaml references examples scripts
+            SKILL.md README.md README.en.md CHANGELOG.md LICENSE .gitignore .pre-commit-hooks.yaml pyproject.toml references examples scripts
           python3 - <<'PY'
           import zipfile
           names = zipfile.ZipFile("dist/skill.zip").namelist()
@@ -101,6 +113,7 @@ jobs:
               "code-refactor-prompts/examples/sql-legacy-report-equivalence.md",
               "code-refactor-prompts/scripts/check_prompt.py",
               "code-refactor-prompts/.pre-commit-hooks.yaml",
+              "code-refactor-prompts/pyproject.toml",
           ]
           for entry in required:
               assert entry in names, f"missing from package: {entry}"

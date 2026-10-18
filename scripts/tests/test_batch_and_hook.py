@@ -118,12 +118,15 @@ class BatchTest(unittest.TestCase):
 
 
 class PreCommitHookTest(unittest.TestCase):
-    def test_hook_definition_calls_the_checker(self):
+    def test_hook_definition_calls_the_installed_console_script(self):
         text = HOOKS.read_text(encoding="utf-8")
-        self.assertIn("scripts/check_prompt.py --strict", text)
+        self.assertIn("entry: code-refactor-prompt-check --strict", text)
+        self.assertIn("language: python", text)
         self.assertIn("pass_filenames: true", text)
         self.assertIn("files:", text)
-        self.assertIn("code-refactor-prompt-check", text)
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('code-refactor-prompt-check = "check_prompt:main"', pyproject)
+        self.assertIn('py-modules = ["check_prompt"]', pyproject)
 
     def test_hook_contract_accepts_passing_files(self):
         files = [str(FIXTURES / "good-prompt.txt"), str(FIXTURES / "good-en-prompt.txt")]

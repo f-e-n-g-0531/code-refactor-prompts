@@ -2,12 +2,34 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.8.1] - 2026-10-18
+
+### Fixed
+
+- 修复 `README.md` / `README.en.md` 整段重复粘贴：v1.8.0 的两份说明文档在 pre-commit 段落之后各重复了除该段落外的全部内容，并截断了 pre-commit 说明句；现恢复为单份文档并补全该句。
+- 修复 pre-commit 钩子不可用：v1.8.0 的钩子缺少打包元数据（`pip install .` 失败），且 entry 按消费仓库 cwd 解析 `scripts/check_prompt.py`。新增 `pyproject.toml`（`check_prompt` 模块 + `code-refactor-prompt-check` console script），entry 改为调用该 console script；CI 增加 `pip install .` 与 console script 端到端自测，发布打包纳入 `pyproject.toml`。
+- 修复 Java 样例验收用例：图书 100 × 1 折后为 90，不触发 100 元满减，期望值应为 `102.2`；补充「分类为 null 仍抛 NPE」的等价用例，参考重构改用 `category.equals(...)` 保留原异常行为，删除误导性的「有意行为收紧」说明。
+- 修正文档与实现 / 审计口径不一致：`--fix` 不能与 `--json` / `--skeleton` 同用；语言参考为「12 门语言 + React 专题」而 compose 支持 13 种语言；审计覆盖 12 个含提示词块的变体（第 6 节速查表跳过）；pre-commit 正则补 `$`；`--skeleton` 只打印、`--fix` 才追加；frontmatter description 补 guard clauses；CI 中 Node 24 只服务 TS 样例；SKILL 工具链段落移出默认模板区。
+- 修正 `README.md` / `README.en.md` 中过期的工具链用例数（23 → 39）。
+
+### Added
+
+- `pyproject.toml`：以 `scripts/check_prompt.py` 为 `check_prompt` 模块，暴露 `code-refactor-prompt-check` console script，供 pre-commit（`language: python`）安装调用。
+- `validate_skill.py` 新增文档守卫：Markdown 必须恰好一个一级标题、不得重复二级标题（拦截整段重复粘贴）；README 的工具链用例数必须与 `scripts/tests/` 的实际用例数一致；README / 钩子注释 / `pyproject.toml` 的版本必须与 `SKILL.md` 的 `metadata.version` 一致；`REQUIRED_FILES` 补入 `test_batch_and_hook.py` 与 `pyproject.toml`。
+- `scripts/tests/test_validate_skill.py`：4 个回归用例，用「复制仓库 → 注入缺陷 → 期望校验失败」的方式覆盖校验脚本自身（干净副本通过、重复二级标题、过期用例数、版本漂移）；`test_batch_and_hook.py` 改查 console script 与 `pyproject.toml` 契约。
+- CI 新增打包后 console script 安装与行为自测；发布 dry-run 与 Release 产物纳入 `pyproject.toml`。
+
+### Changed
+
+- README / README.en / SKILL 全量同步上述事实：pre-commit 安装方式、批量选项组合限制、语言与变体审计口径、CI 步骤与结构树。
+- pre-commit 钩子 entry 从 `python3 scripts/check_prompt.py --strict` 改为 `code-refactor-prompt-check --strict`。
+
 ## [1.8.0] - 2026-10-18
 
 ### Added
 
-- `check_prompt.py` 批量模式：支持多文件与目录递归检查（默认匹配 `*.prompt` / `*.prompt.md` / `*.prompt.txt`，`--include` 自定义），逐文件 PASS/FAIL + 汇总，兼容 `--fix` / `--strict` / `--json`；目录无匹配文件或 stdin 与其他来源混用返回退出码 2。
-- `.pre-commit-hooks.yaml`：可直接被 pre-commit 消费的钩子定义（entry `python3 scripts/check_prompt.py --strict`、`pass_filenames: true`）。
+- `check_prompt.py` 批量模式：支持多文件与目录递归检查（默认匹配 `*.prompt` / `*.prompt.md` / `*.prompt.txt`，`--include` 自定义），逐文件 PASS/FAIL + 汇总，支持 `--fix` / `--strict` / `--json`（`--fix` 不能与 `--json` / `--skeleton` 同用）；目录无匹配文件或 stdin 与其他来源混用返回退出码 2。
+- `.pre-commit-hooks.yaml`：pre-commit 钩子定义（v1.8.1 补齐 `pyproject.toml` 并改为 console script entry 后才真正可用）。
 - `scripts/tests/test_batch_and_hook.py`：12 个新用例覆盖目录扫描、多文件、`--include`、批量 `--fix` / `--json` / `--strict`、空目录与 stdin 混用、钩子定义与钩子契约。
 
 ### Changed

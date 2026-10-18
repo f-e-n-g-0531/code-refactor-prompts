@@ -3,16 +3,18 @@
 #
 #   repos:
 #     - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-#       rev: v1.8.0
+#       rev: v1.8.1
 #       hooks:
 #         - id: code-refactor-prompt-check
 #
-# The hook passes the staged prompt files to check_prompt.py, which supports
-# multiple file arguments and directories (see README "接入 CI 与 pre-commit").
+# The repo exposes a console script via pyproject.toml, so pre-commit's
+# "language: python" installs it and the entry below resolves inside the hook
+# environment (not against the consuming repository's working directory).
+# The script accepts multiple files and directories (see README "接入 CI 与 pre-commit").
 - id: code-refactor-prompt-check
   name: Check code-refactoring prompts
   description: Structural self-check for refactoring prompts (eight segments, verifiable acceptance, anti-patterns).
-  entry: python3 scripts/check_prompt.py --strict
+  entry: code-refactor-prompt-check --strict
   language: python
   files: '\.prompt(\.(md|txt))?$'
   pass_filenames: true

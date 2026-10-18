@@ -1,15 +1,15 @@
 ---
 name: code-refactor-prompts
-description: Compose high-quality, behavior-preserving code refactoring prompts. Use when the user asks how to write a refactoring/optimization prompt, wants a reusable prompt template, or needs AI to refactor, de-smell, or optimize code safely. Distill every prompt into role, context, code, hard constraints, refactoring goals, verifiable acceptance criteria, and output format; never let "keep behavior unchanged" go untested.
+description: Compose high-quality, behavior-preserving code refactoring prompts. Use when the user asks how to write a refactoring/optimization prompt, wants a reusable prompt template, or needs AI to refactor, de-smell, or optimize code safely. Distill every prompt into role, context, code, hard constraints, refactoring goals, verifiable acceptance criteria, output format, and guard clauses; never let "keep behavior unchanged" go untested.
 license: MIT
 metadata:
   author: f-e-n-g-0531
-  version: "1.8.0"
+  version: "1.8.1"
 ---
 
 # 代码重构优化提示词
 
-当用户要求重构/优化代码、索要重构提示词模板，或需要 AI 安全地重构、去坏味道、优化代码时，按本技能产出**可直接粘贴使用的结构化提示词**。默认中文输出；若用户指定语言/框架，把模板中 `{占位符}` 与测试命令填成对应的可用值。英文模板见 `references/template-en.md`；检查器支持中英文提示词（`--strict` 严格模式、`--skeleton` 补齐缺失段落）；主模板与英文模板本身也由 `audit_templates.py` 用同一检查器审计；不想手填模板时，`scripts/compose_prompt.py` 可从源码文件一键生成填好的提示词（中/英，自动识别 13 种语言与测试命令），生成结果先过检查器才输出；仓库内 Python / Go / Rust / TypeScript / C# / SQL 六个样例均由 CI 实际执行（`verify_examples.py`），可直接照搬其验收标准写法；默认模板、英文模板与 13 个专项变体由 `audit_templates.py` 分级审计。
+当用户要求重构/优化代码、索要重构提示词模板，或需要 AI 安全地重构、去坏味道、优化代码时，按本技能产出**可直接粘贴使用的结构化提示词**。默认中文输出；若用户指定语言/框架，把模板中 `{占位符}` 与测试命令填成对应的可用值。英文模板见 `references/template-en.md`；检查器支持中英文提示词（`--strict` 严格模式、`--skeleton` 打印缺失段落骨架、`--fix` 追加并复查）；主模板与英文模板本身也由 `audit_templates.py` 用同一检查器审计；不想手填模板时，`scripts/compose_prompt.py` 可从源码文件一键生成填好的提示词（中/英，自动识别 13 种语言与测试命令），生成结果先过检查器才输出；仓库内 Python / Go / Rust / TypeScript / C# / SQL 六个样例均由 CI 实际执行（`verify_examples.py`），可直接照搬其验收标准写法；默认模板、英文模板与含提示词块的专项变体由 `audit_templates.py` 分级审计。
 
 ## 核心原则
 
@@ -96,8 +96,6 @@ metadata:
 如有信息不足，先提问再动手。
 ```
 
-支持目录批量检查（`check_prompt.py prompts/ --strict`），并附带可被 pre-commit 直接消费的 `.pre-commit-hooks.yaml`。生成后自检与补全：`python3 scripts/check_prompt.py <file>` 检查结构；`--fix` 会把缺失段落骨架直接追加到文件并自动复查；`--strict` 让警告也阻止合入。详见 README「提示词自检」。
-
 ## 输出格式选项
 
 在【输出格式】里按场景显式选择，不要留给模型自由发挥：
@@ -107,6 +105,8 @@ metadata:
 - **分步 patch**：大文件 / 多文件重构时按批次给 patch，每批附各自的验收命令。
 - **改动清单（必选）**：无论哪种格式，都要求「每处改动 → 改了什么 → 为什么 → 影响面」表格。
 - **生成后自检**：把提示词存成文件，运行 `python3 scripts/check_prompt.py <file>`，检查八段是否齐全、验收是否可验证、验收命令与语言是否匹配（自动识别，或 `--lang go` 显式指定），并拦截「顺便改测试」「整体重写」等典型反模式。中英文提示词都支持；团队门禁可用 `--strict`（警告即失败），缺失段落用 `--skeleton` 直接打印可填骨架。
+
+生成、自检、批量与 pre-commit 集成：`scripts/compose_prompt.py --code <文件>` 一键生成；`scripts/check_prompt.py <file>` 自检（`--strict` / `--skeleton` / `--fix` / `--json`）；`scripts/check_prompt.py prompts/ --strict` 批量检查目录；`.pre-commit-hooks.yaml` 通过 `pyproject.toml` 安装的 `code-refactor-prompt-check` console script 接入 pre-commit。详见 README。
 
 ## 迭代修复（应用后验证）
 
@@ -118,4 +118,4 @@ metadata:
 
 ## 专项变体
 
-性能优化、代码坏味道、大文件/长函数拆分、安全加固、现代化升级、分语言定制（速查）、行为基线测试、守卫（Guard Clauses）、可测试性改造、模块化/解耦、SOLID 原则、设计模式应用、技术债/遗留系统，见 `references/specialized-prompts.md`；分语言完整版见 `references/language-specific.md`；端到端流程（评审驱动、遗留代码基线、多文件分批、迭代修复）见 `references/workflows.md`；英文主模板见 `references/template-en.md`；实战样例见 `examples/`；每个变体都带可验证的验收锚点（CI 分级审计）；落地检查清单（发提示词前 / 应用前 / 应用后 / 合并前）见 `references/checklists.md`；依据与出处见 `references/sources.md`。
+性能优化、代码坏味道、大文件/长函数拆分、安全加固、现代化升级、分语言定制（速查）、行为基线测试、守卫（Guard Clauses）、可测试性改造、模块化/解耦、SOLID 原则、设计模式应用、技术债/遗留系统，见 `references/specialized-prompts.md`；分语言完整版见 `references/language-specific.md`；端到端流程（评审驱动、遗留代码基线、多文件分批、迭代修复）见 `references/workflows.md`；英文主模板见 `references/template-en.md`；实战样例见 `examples/`；除速查表外的每个变体都带可验证的验收锚点（CI 分级审计）；落地检查清单（发提示词前 / 应用前 / 应用后 / 合并前）见 `references/checklists.md`；依据与出处见 `references/sources.md`。
