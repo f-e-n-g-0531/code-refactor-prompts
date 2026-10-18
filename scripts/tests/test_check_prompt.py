@@ -260,6 +260,14 @@ class CliTest(unittest.TestCase):
         result = run_checker("-", input_text=text)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_non_utf8_prompt_is_usage_error(self):
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "ansi.prompt.txt"
+            target.write_bytes("中文提示词".encode("gbk"))
+            result = run_checker(str(target))
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("UTF-8", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

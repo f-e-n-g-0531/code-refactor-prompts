@@ -2,12 +2,31 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.9.0] - 2026-10-18
+
+### Added
+
+- `compose_prompt.py` 支持 `--rule`（业务规则，可重复）与 `--case`（验收用例，可重复）：生成器可直接产出 C 档提示词——上下文含业务规则、验收标准含具体用例，不再只生成带占位符的 B 档；未提供时行为不变（占位符保留），输出仍先过检查器才写出。
+- 工具链回归测试新增 10 个用例：3 个覆盖 C 档生成（中文、英文、未提供规则/用例时保留占位符），3 个注入用例覆盖校验脚本（pyproject 版本漂移、钩子 entry 漂移、重复 H1），4 个覆盖输入健壮性（非 UTF-8 提示词 / 源码、`--out` 目录不存在、stdin 缺 `--code-lang`）；用例总数 39 → 49。
+- CI 与 Release 增加 pre-commit 端到端测试：用 `pre-commit try-repo .` 验证好提示词通过、坏提示词阻断提交，覆盖「文档声称可用」与「实际可用」之间的缝隙。
+- Release 增加产物校验：发布 zip 必须包含 `pyproject.toml` / `.pre-commit-hooks.yaml` / `scripts/check_prompt.py`，且不得包含 `.github`。
+- `validate_skill.py` 守卫加固：`rev` 支持带引号的 YAML、代码围栏按开围栏长度正确闭合、测试计数支持 `async`、CI 检查精确到步骤名，并校验 Release 的端到端测试与产物断言。
+
+### Fixed
+
+- 工具链输入健壮性：非 UTF-8 的提示词 / 源码不再抛 traceback，统一返回退出码 2 与可读错误；stdin 未给 `--code-lang` 时给出明确提示；`--out` 目录不存在时返回 2 而不是 traceback；批量 `--json` 结果补充 `skeleton` 字段，与单文件 JSON 对齐。
+- 文档补齐消费端前置条件与实测反馈：pre-commit 的 `pip install pre-commit` / `pre-commit install`、`rev` 需指向已发布 tag、命令需在技能仓库根目录执行、Windows / PowerShell 单行命令与 UTF-8 读取方式、退出码 0 / 1 / 2 与 `--json` 说明；英文 README 的 compose 示例补 `--output-lang en`。
+
+### Changed
+
+- README / README.en 的「一键生成」说明与示例补充 C 档用法（明确「同时提供」才生成完整 C 档）；发布流程补齐 `pyproject.toml` 版本与 `rev` 同步；CI 说明补充 pre-commit 端到端；SKILL 工具链段落同步；版本 1.9.0。
+
 ## [1.8.1] - 2026-10-18
 
 ### Fixed
 
 - 修复 `README.md` / `README.en.md` 整段重复粘贴：v1.8.0 的两份说明文档在 pre-commit 段落之后各重复了除该段落外的全部内容，并截断了 pre-commit 说明句；现恢复为单份文档并补全该句。
-- 修复 pre-commit 钩子不可用：v1.8.0 的钩子缺少打包元数据（`pip install .` 失败），且 entry 按消费仓库 cwd 解析 `scripts/check_prompt.py`。新增 `pyproject.toml`（`check_prompt` 模块 + `code-refactor-prompt-check` console script），entry 改为调用该 console script；CI 增加 `pip install .` 与 console script 端到端自测，发布打包纳入 `pyproject.toml`。
+- 修复 pre-commit 钩子不可用：v1.8.0 的钩子缺少打包元数据（`pip install .` 失败），且 entry 按消费仓库 cwd 解析 `scripts/check_prompt.py`。新增 `pyproject.toml`（`check_prompt` 模块 + `code-refactor-prompt-check` console script），entry 改为调用该 console script；CI 增加 `pip install .` 与 console script 安装/行为自测（pre-commit 消费端端到端见 1.9.0），发布打包纳入 `pyproject.toml`。
 - 修复 Java 样例验收用例：图书 100 × 1 折后为 90，不触发 100 元满减，期望值应为 `102.2`；补充「分类为 null 仍抛 NPE」的等价用例，参考重构改用 `category.equals(...)` 保留原异常行为，删除误导性的「有意行为收紧」说明。
 - 修正文档与实现 / 审计口径不一致：`--fix` 不能与 `--json` / `--skeleton` 同用；语言参考为「12 门语言 + React 专题」而 compose 支持 13 种语言；审计覆盖 12 个含提示词块的变体（第 6 节速查表跳过）；pre-commit 正则补 `$`；`--skeleton` 只打印、`--fix` 才追加；frontmatter description 补 guard clauses；CI 中 Node 24 只服务 TS 样例；SKILL 工具链段落移出默认模板区。
 - 修正 `README.md` / `README.en.md` 中过期的工具链用例数（23 → 39）。
@@ -71,7 +90,7 @@
 ### Added
 
 - `examples/sql-legacy-report-equivalence.md`：可执行 SQL 样例——用固定数据集把遗留查询结果锁成 golden，再用 CTE + 独立聚合改写并逐行差分；验证只用 Python 标准库 `sqlite3`，零依赖。
-- 专项变体分级审计：`audit_templates.py` 新增第二级审计，主模板跑完整检查器，12 个变体检查「验收锚点」（守卫变体检查 `NO_CODE_PROVIDED` / `NO_REFACTORING_NEEDED`），并扫描反模式。
+- 专项变体分级审计：`audit_templates.py` 新增第二级审计，主模板跑完整检查器；12 个含提示词块的变体参与审计（11 个检查「验收锚点」，守卫变体检查 `NO_CODE_PROVIDED` / `NO_REFACTORING_NEEDED`；第 6 节速查表跳过），并扫描反模式。
 - 5 个变体补齐显式验收锚点：代码坏味道、安全加固、模块化/解耦、SOLID、设计模式应用。
 
 ### Changed

@@ -93,5 +93,40 @@ class ValidatorTest(unittest.TestCase):
         self.assertIn("不一致", result.stdout)
 
 
+    def test_pyproject_version_drift_is_rejected(self) -> None:
+        root = self._copy_case("pyproject-version-drift")
+        pyproject = root / "pyproject.toml"
+        text = pyproject.read_text(encoding="utf-8")
+        updated = re.sub(r'^version = "\d+\.\d+\.\d+"', 'version = "0.0.0"', text, count=1, flags=re.M)
+        self.assertNotEqual(text, updated)
+        pyproject.write_text(updated, encoding="utf-8")
+        result = run_validator(root)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("pyproject.toml", result.stdout)
+
+    def test_hook_entry_drift_is_rejected(self) -> None:
+        root = self._copy_case("hook-entry-drift")
+        hooks = root / ".pre-commit-hooks.yaml"
+        text = hooks.read_text(encoding="utf-8")
+        updated = text.replace(
+            "entry: code-refactor-prompt-check --strict",
+            "entry: python3 scripts/check_prompt.py --strict",
+        )
+        self.assertNotEqual(text, updated)
+        hooks.write_text(updated, encoding="utf-8")
+        result = run_validator(root)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn(".pre-commit-hooks.yaml", result.stdout)
+
+    def test_duplicate_h1_is_rejected(self) -> None:
+        root = self._copy_case("duplicate-h1")
+        readme = root / "README.md"
+        readme.write_text(
+            readme.read_text(encoding="utf-8") + "\n# Second title\n", encoding="utf-8"
+        )
+        result = run_validator(root)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("一级标题", result.stdout)
+
 if __name__ == "__main__":
     unittest.main()

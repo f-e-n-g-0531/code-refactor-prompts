@@ -87,6 +87,22 @@ jobs:
           fi
           echo "pre-commit console script OK"
 
+      - name: Test the pre-commit hook end to end
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/precommit-e2e-venv
+          /tmp/precommit-e2e-venv/bin/pip install --quiet --disable-pip-version-check pre-commit
+          mkdir -p .pre-commit-e2e
+          cp scripts/fixtures/good-prompt.txt .pre-commit-e2e/order.prompt.txt
+          cp scripts/fixtures/bad-prompt.txt .pre-commit-e2e/bad.prompt.txt
+          /tmp/precommit-e2e-venv/bin/pre-commit try-repo . --ref HEAD --files .pre-commit-e2e/order.prompt.txt
+          if /tmp/precommit-e2e-venv/bin/pre-commit try-repo . --ref HEAD --files .pre-commit-e2e/bad.prompt.txt; then
+            echo "::error::the pre-commit hook must reject a bad prompt"
+            exit 1
+          fi
+          rm -rf .pre-commit-e2e
+          echo "pre-commit hook end-to-end OK"
+
       - name: Set up Node.js for the TypeScript example
         uses: actions/setup-node@v4
         with:

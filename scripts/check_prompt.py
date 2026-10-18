@@ -343,6 +343,14 @@ def skeleton_blocks(keys: list[str], english: bool) -> list[str]:
 DEFAULT_INCLUDE_PATTERNS = ("*.prompt", "*.prompt.md", "*.prompt.txt")
 
 
+def read_text_file(path: Path) -> str:
+    """Read UTF-8 text (BOM tolerated) or raise ValueError with a usable message."""
+    try:
+        return path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{path} is not valid UTF-8; save the prompt as UTF-8") from exc
+
+
 def build_skeleton_blocks(text: str) -> list[str]:
     result = check(text)
     keys = [item["segment"] for item in result["skeleton"]]
@@ -351,7 +359,7 @@ def build_skeleton_blocks(text: str) -> list[str]:
 
 def apply_fix_to_file(path: Path, language: str, strict: bool) -> dict:
     """Append missing-segment skeletons to path, then return the re-checked result."""
-    text = path.read_text(encoding="utf-8")
+    text = read_text_file(path)
     result = check(text, explicit_language=language, strict=strict)
     keys = [item["segment"] for item in result["skeleton"]]
     if keys:
@@ -441,12 +449,16 @@ def run_batch(
     passed = 0
     failed = 0
     for file in files:
-        text = file.read_text(encoding="utf-8")
-        if fix:
-            result = apply_fix_to_file(file, language, strict)
-            text = file.read_text(encoding="utf-8")
-        else:
-            result = check(text, explicit_language=language, strict=strict)
+        try:
+            if fix:
+                result = apply_fix_to_file(file, language, strict)
+                text = read_text_file(file)
+            else:
+                text = read_text_file(file)
+                result = check(text, explicit_language=language, strict=strict)
+        except ValueError as exc:
+            print(f"cannot check: {exc}", file=sys.stderr)
+            return 2
         blocks = build_skeleton_blocks(text) if (skeleton_output and result["skeleton"]) else []
         results.append(
             {
@@ -458,6 +470,7 @@ def run_batch(
                 "languages": result["languages"],
                 "language_source": result["language_source"],
                 "verifiable": result["verifiable"],
+                "skeleton": blocks,
             }
         )
         if result["pass"]:
@@ -544,14 +557,18 @@ def main() -> int:
         )
 
     source = sources[0]
-    if source == "-":
-        text = sys.stdin.read()
-    else:
-        candidate = Path(source)
-        if not candidate.is_file():
-            print(f"file not found: {source}", file=sys.stderr)
-            return 2
-        text = candidate.read_text(encoding="utf-8")
+    try:
+        if source == "-":
+            text = sys.stdin.read()
+        else:
+            candidate = Path(source)
+            if not candidate.is_file():
+                print(f"file not found: {source}", file=sys.stderr)
+                return 2
+            text = read_text_file(candidate)
+    except (ValueError, UnicodeDecodeError) as exc:
+        print(f"cannot read prompt: {exc}", file=sys.stderr)
+        return 2
 
     if args.fix:
         if source == "-":

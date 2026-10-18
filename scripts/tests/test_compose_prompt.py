@@ -104,6 +104,67 @@ class ComposeTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("self-check", result.stderr)
 
+    def test_rules_and_cases_produce_tier_c_prompt(self):
+        result = run_compose(
+            "--code",
+            str(SAMPLE_GO),
+            "--rule",
+            "图书 9 折，电子 95 折",
+            "--case",
+            "空订单 -> 0",
+            "--case",
+            "图书 100x1 -> 102.2",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("业务规则（必须保持", result.stdout)
+        self.assertIn("图书 9 折，电子 95 折", result.stdout)
+        self.assertIn("空订单 -> 0", result.stdout)
+        self.assertNotIn("{给定输入 → 期望输出}", result.stdout)
+        self.assertTrue(checker.check(result.stdout, explicit_language="go")["pass"])
+
+    def test_english_rules_and_cases_produce_tier_c_prompt(self):
+        result = run_compose(
+            "--code",
+            str(SAMPLE_PY),
+            "--output-lang",
+            "en",
+            "--rule",
+            "VIP orders get 10% off",
+            "--case",
+            "empty order -> 0",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Business rules (must preserve", result.stdout)
+        self.assertIn("VIP orders get 10% off", result.stdout)
+        self.assertIn("  - empty order -> 0", result.stdout)
+        self.assertNotIn("(fill in with the baseline tests)", result.stdout)
+
+    def test_placeholder_kept_when_no_rules_or_cases_given(self):
+        result = run_compose("--code", str(SAMPLE_GO))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("{给定输入 → 期望输出}", result.stdout)
+        self.assertNotIn("业务规则（必须保持", result.stdout)
+
+    def test_non_utf8_source_is_rejected(self):
+        with tempfile.TemporaryDirectory() as raw:
+            source = Path(raw) / "legacy.go"
+            source.write_bytes("package legacy // 中文".encode("gbk"))
+            result = run_compose("--code", str(source))
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("UTF-8", result.stderr)
+
+    def test_out_into_missing_directory_is_usage_error(self):
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "missing" / "prompt.txt"
+            result = run_compose("--code", str(SAMPLE_GO), "--out", str(target))
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("cannot write", result.stderr)
+
+    def test_stdin_without_code_lang_is_usage_error(self):
+        result = run_compose("--code", "-", input_text="package example\n")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("--code-lang", result.stderr)
+
     def test_unknown_extension_requires_code_lang(self):
         with tempfile.TemporaryDirectory() as raw:
             source = Path(raw) / "snippet.xyz"

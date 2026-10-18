@@ -171,7 +171,9 @@ def check_counts() -> None:
 def count_test_methods() -> int:
     total = 0
     for path in sorted((ROOT / "scripts" / "tests").glob("test_*.py")):
-        total += len(re.findall(r"^\s+def test_", path.read_text(encoding="utf-8"), re.M))
+        total += len(
+            re.findall(r"^\s+(?:async\s+)?def test_", path.read_text(encoding="utf-8"), re.M)
+        )
     return total
 
 
@@ -190,13 +192,21 @@ def check_test_counts() -> None:
 def strip_fenced_blocks(text: str) -> str:
     """Blank out fenced code blocks so headings inside code samples are ignored."""
     lines: list[str] = []
-    in_fence = False
+    fence_char = ""
+    fence_length = 0
     for line in text.splitlines():
-        if re.match(r"^\s*(```|~~~)", line):
-            in_fence = not in_fence
+        marker = re.match(r"^\s*(`{3,}|~{3,})", line)
+        if fence_char:
+            lines.append("")
+            if marker and marker.group(1)[0] == fence_char and len(marker.group(1)) >= fence_length:
+                fence_char = ""
+                fence_length = 0
+        elif marker:
+            fence_char = marker.group(1)[0]
+            fence_length = len(marker.group(1))
             lines.append("")
         else:
-            lines.append("" if in_fence else line)
+            lines.append(line)
     return "\n".join(lines)
 
 
@@ -222,7 +232,7 @@ def check_version_refs(version: str | None) -> None:
     if not version:
         return
     for rel in ("README.md", "README.en.md", ".pre-commit-hooks.yaml"):
-        found = re.findall(r"rev:\s*v(\d+\.\d+\.\d+)", read(rel))
+        found = re.findall(r"rev:\s*['\"]?v(\d+\.\d+\.\d+)['\"]?", read(rel))
         if not found:
             errors.append(f"{rel}：缺少 rev: v{version} 版本引用")
         for got in found:
@@ -302,8 +312,15 @@ def check_ci_wiring() -> None:
         errors.append("ci.yml：未自测 check_prompt.py --fix（修复闭环未验证）")
     if "scripts/tests" not in ci:
         errors.append("ci.yml：未运行工具链回归测试（scripts/tests）")
-    if "code-refactor-prompt-check" not in ci:
-        errors.append("ci.yml：未测试打包后的 pre-commit console script（code-refactor-prompt-check）")
+    if "Test the packaged pre-commit console script" not in ci:
+        errors.append("ci.yml：缺少「Test the packaged pre-commit console script」步骤")
+    if "pre-commit try-repo" not in ci:
+        errors.append("ci.yml：未做 pre-commit 端到端测试（try-repo）")
+    release = read(".github/workflows/release.yml")
+    if "pre-commit try-repo" not in release:
+        errors.append("release.yml：未做 pre-commit 端到端测试（try-repo）")
+    if "release artifact OK" not in release:
+        errors.append("release.yml：缺少发布产物校验（必须含 pyproject.toml、不得含 .github）")
     for fixture in (
         "good-prompt.txt",
         "good-go-prompt.txt",

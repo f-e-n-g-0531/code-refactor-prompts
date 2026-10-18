@@ -81,13 +81,17 @@ class BatchTest(unittest.TestCase):
     def test_json_batch_shape(self):
         self.write("good.prompt.txt", GOOD)
         self.write("bad.prompt.txt", BAD)
-        result = run_checker(str(self.dir), "--json")
+        result = run_checker(str(self.dir), "--json", "--skeleton")
         self.assertEqual(result.returncode, 1)
         payload = json.loads(result.stdout)
         self.assertFalse(payload["pass"])
         self.assertEqual(payload["passed"], 1)
         self.assertEqual(payload["failed"], 1)
         self.assertEqual(len(payload["results"]), 2)
+        for item in payload["results"]:
+            self.assertIn("skeleton", item)
+        failing = [item for item in payload["results"] if not item["pass"]][0]
+        self.assertTrue(failing["skeleton"])
 
     def test_include_override(self):
         self.write("custom.md", GOOD)

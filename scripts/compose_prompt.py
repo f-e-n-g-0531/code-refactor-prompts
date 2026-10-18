@@ -17,6 +17,10 @@ Options:
     --pain TEXT            known pain points (default: a generic placeholder)
     --goal TEXT            refactoring goal (repeatable; sensible defaults given)
     --constraint TEXT      extra hard constraint (repeatable)
+    --rule TEXT            business rule that must be preserved (repeatable; turns the
+                           prompt into tier C by filling the context section)
+    --case TEXT            acceptance case such as 'empty order -> 0' (repeatable;
+                           replaces the acceptance placeholder with concrete cases)
     --test-command CMD     acceptance test command (default: per language)
     --output-lang zh|en    language of the generated prompt (default: zh)
     --out FILE             write to FILE instead of stdout
@@ -122,6 +126,14 @@ DEFAULT_TEST_COMMANDS_EN = {
 }
 
 
+def read_source_text(path: Path) -> str:
+    """Read UTF-8 source (BOM tolerated) or raise a usage error for non-UTF-8 input."""
+    try:
+        return path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ComposeError(f"code file is not valid UTF-8: {path}") from exc
+
+
 def load_checker():
     spec = importlib.util.spec_from_file_location("check_prompt", CHECKER)
     module = importlib.util.module_from_spec(spec)
@@ -208,6 +220,22 @@ def build_zh(context: dict) -> str:
             "如有信息不足，先提问再动手。",
         ]
     )
+    if context["rules"]:
+        pain_index = next(
+            index for index, line in enumerate(lines) if line.startswith("- 这段代码做什么")
+        )
+        rules = ["- 业务规则（必须保持，逐条写进验收用例）："] + [
+            f"  - {rule}" for rule in context["rules"]
+        ]
+        lines[pain_index + 1 : pain_index + 1] = rules
+    if context["cases"]:
+        placeholder_index = next(
+            index for index, line in enumerate(lines) if line.startswith("- 用例：{")
+        )
+        lines[placeholder_index] = "- 用例："
+        lines[placeholder_index + 1 : placeholder_index + 1] = [
+            f"  - {case}" for case in context["cases"]
+        ]
     return "\n".join(lines) + "\n"
 
 
@@ -257,6 +285,24 @@ def build_en(context: dict) -> str:
             "Ask clarifying questions before starting if information is missing.",
         ]
     )
+    if context["rules"]:
+        pain_index = next(
+            index
+            for index, line in enumerate(lines)
+            if line.startswith("- What this code does")
+        )
+        rules = ["- Business rules (must preserve, one acceptance case each):"] + [
+            f"  - {rule}" for rule in context["rules"]
+        ]
+        lines[pain_index + 1 : pain_index + 1] = rules
+    if context["cases"]:
+        placeholder_index = next(
+            index for index, line in enumerate(lines) if line.startswith("- Cases: {")
+        )
+        lines[placeholder_index] = "- Cases:"
+        lines[placeholder_index + 1 : placeholder_index + 1] = [
+            f"  - {case}" for case in context["cases"]
+        ]
     return "\n".join(lines) + "\n"
 
 
@@ -272,15 +318,37 @@ def main() -> int:
     parser.add_argument("--pain", default="{一句话说明这段代码在做什么、哪里痛}", help="known pain points")
     parser.add_argument("--goal", action="append", default=[], help="refactoring goal (repeatable)")
     parser.add_argument("--constraint", action="append", default=[], help="extra hard constraint (repeatable)")
+    parser.add_argument(
+        "--rule",
+        action="append",
+        default=[],
+        help="business rule that must be preserved (repeatable; fills the tier-C context section)",
+    )
+    parser.add_argument(
+        "--case",
+        action="append",
+        default=[],
+        help="acceptance case such as 'empty order -> 0' (repeatable; replaces the acceptance placeholder)",
+    )
     parser.add_argument("--test-command", help="acceptance test command (default: per language)")
     parser.add_argument("--output-lang", choices=["zh", "en"], default="zh", help="language of the generated prompt")
     parser.add_argument("--out", help="write the prompt to FILE instead of stdout")
     args = parser.parse_args()
 
     if args.code == "-":
-        code = sys.stdin.read()
+        try:
+            code = sys.stdin.read()
+        except UnicodeDecodeError as exc:
+            print(f"stdin is not valid UTF-8: {exc}", file=sys.stderr)
+            return 2
         if not code.strip():
             print("no code on stdin", file=sys.stderr)
+            return 2
+        if not args.code_lang:
+            print(
+                "stdin needs --code-lang (cannot detect a language without a file extension)",
+                file=sys.stderr,
+            )
             return 2
         try:
             language = detect_language(None, args.code_lang)
@@ -293,7 +361,11 @@ def main() -> int:
         if not source.is_file():
             print(f"code file not found: {args.code}", file=sys.stderr)
             return 2
-        code = source.read_text(encoding="utf-8")
+        try:
+            code = read_source_text(source)
+        except ComposeError as exc:
+            print(exc, file=sys.stderr)
+            return 2
         if not code.strip():
             print(f"code file is empty: {args.code}", file=sys.stderr)
             return 2
@@ -322,6 +394,8 @@ def main() -> int:
         "goals": goals,
         "goals_en": goals_en,
         "constraints": args.constraint,
+        "rules": [rule.strip() for rule in args.rule if rule.strip()],
+        "cases": [case.strip() for case in args.case if case.strip()],
     }
     prompt = build_en(context) if args.output_lang == "en" else build_zh(context)
 
@@ -335,7 +409,11 @@ def main() -> int:
         return 1
 
     if args.out:
-        Path(args.out).write_text(prompt, encoding="utf-8")
+        try:
+            Path(args.out).write_text(prompt, encoding="utf-8")
+        except OSError as exc:
+            print(f"cannot write {args.out}: {exc}", file=sys.stderr)
+            return 2
         print(f"wrote self-checked prompt to {args.out}", file=sys.stderr)
     else:
         sys.stdout.write(prompt)

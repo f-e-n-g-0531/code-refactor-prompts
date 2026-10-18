@@ -43,7 +43,7 @@ code-refactor-prompts/
 │   └── tests/                    工具链回归测试（检查器 / 生成器 / 批量与钩子 / 校验脚本）
 └── .github/
     ├── workflows/
-    │   ├── ci.yml                校验 + 模板审计 + 自测 + 样例实跑（push / PR）
+    │   ├── ci.yml                校验 + 模板审计 + 自测 + 样例实跑（push 到 main / PR）
     │   └── release.yml           推送 v* 标签自动发布
     └── scripts/
         ├── validate_skill.py     结构 / 文案 / 文档结构 / 版本与用例数校验
@@ -61,9 +61,9 @@ code-refactor-prompts/
 - **端到端工作流**：评审驱动重构、遗留代码先锁行为基线、多文件分批验收、AI 输出后的迭代修复。
 - **分语言定制**：Java / Python / JS-TS / React / Go / Rust / C# / C++ / SQL / Kotlin / Swift / Ruby / PHP 的惯用手法、测试命令与红线。
 - **批量与门禁**：`check_prompt.py` 支持多文件 / 目录批量检查（逐文件 PASS/FAIL + 汇总），附 `.pre-commit-hooks.yaml`，pre-commit / CI 可直接接入。
-- **工具链回归测试**：`scripts/tests/` 以 39 个用例覆盖检查器、生成器、`--fix` 闭环、13 语言矩阵与校验脚本自身，CI 每次运行。
+- **工具链回归测试**：`scripts/tests/` 以 49 个用例覆盖检查器、生成器（含 C 档）、`--fix` 闭环、13 语言矩阵与校验脚本自身，CI 每次运行。
 - **落地清单**：`references/checklists.md` 给出「发提示词前 → 应用前 → 应用后 → 合并前」四段检查清单。
-- **一键生成**：`scripts/compose_prompt.py --code <文件>` 从源码文件生成填好的八段提示词（中 / 英，自动识别 13 种语言与测试命令），生成结果先过检查器，不合规就拒绝输出。
+- **一键生成**：`scripts/compose_prompt.py --code <文件>` 从源码文件生成填好的八段提示词（中 / 英，自动识别 13 种语言与测试命令）；同时提供 `--rule`（业务规则）与 `--case`（验收用例）时直接生成完整 C 档；生成结果先过检查器，不合规就拒绝输出。
 - **可自检（双语）**：`scripts/check_prompt.py` 检查八段、可验证验收与守卫；自动识别中英文段落与提示词语言，校验验收命令是否匹配（如 Go 必须写 `go test`），拦截「顺便改测试」「整体重写」「空泛指标」等中英文反模式；支持 `--strict`（警告即失败）、`--skeleton`（打印缺失段落骨架）与 `--fix`（把缺失段落骨架追加到文件并复查）。
 - **样例可执行**：6 个跨语言 / 跨领域样例由 CI 用 `verify_examples.py` 真实执行（`go test` / `python -m unittest` / `cargo test` / `node --test` / `dotnet run` / SQLite 结果集对比），文档与代码不会脱节。
 - **分级审计**：`audit_templates.py` 用同一检查器审计 SKILL.md 默认模板与英文模板（完整八段检查）；12 个含提示词块的专项变体检查「验收锚点」与 error 级反模式（第 6 节为速查表），守卫变体改查 `NO_CODE_PROVIDED` / `NO_REFACTORING_NEEDED`——主模板和变体的质量都不靠自觉。
@@ -75,6 +75,7 @@ code-refactor-prompts/
 1. 将本仓库放入 DSH 的 skills 目录：`~/.dsh/skills/`
 2. 目录名必须为 `code-refactor-prompts`，且包含 `SKILL.md`
 3. DSH 会自动发现并注册该技能
+4. 使用工具链需 Python 3.9+（Windows 上通常用 `python` 而不是 `python3`）
 
 ## 使用
 
@@ -82,15 +83,17 @@ code-refactor-prompts/
 
 ## 一键生成提示词
 
-手头有代码但不想手填模板时：
+手头有代码但不想手填模板时（以下命令在技能仓库根目录执行，把 `src/order.go` 换成你的源文件）：
 
 ```bash
 python3 scripts/compose_prompt.py --code src/order.go --project order-pricing \
-    --pain "Total 函数 150 行、魔法数字散落" --out prompt.txt
+    --pain "Total 函数 150 行、魔法数字散落" \
+    --rule "图书 9 折、电子 95 折，满 100 再 98 折" \
+    --case "空订单 → 0" --case "图书 100×1 → 102.2" --out prompt.txt
 python3 scripts/check_prompt.py prompt.txt
 ```
 
-自动识别的语言与默认测试命令覆盖 Go / Python / Java / Rust / TypeScript / JavaScript / C# / Kotlin / Swift / Ruby / PHP / C++ / SQL；生成时已内置自检，若生成的提示词过不了检查器（例如 `--test-command` 与语言不匹配），脚本直接报错退出、不输出不合规提示词。
+不给 `--rule` / `--case` 时输出 B 档提示词（业务规则与用例留占位符）；同时提供两者时输出完整 C 档（上下文含业务规则、验收标准含具体用例）；只提供一侧时该侧被填实、另一侧仍是占位符。自动识别的语言与默认测试命令覆盖 Go / Python / Java / Rust / TypeScript / JavaScript / C# / Kotlin / Swift / Ruby / PHP / C++ / SQL；生成时已内置自检，若生成的提示词过不了检查器（例如 `--test-command` 与语言不匹配），脚本直接报错退出、不输出不合规提示词。
 
 ## 落地检查清单
 
@@ -111,6 +114,10 @@ cat my-prompt.txt | python3 scripts/check_prompt.py -
 
 只检查结构与模式，不判断语义质量；CI 用 `scripts/fixtures/` 里的正例 / 反例自测该脚本（含语言不匹配、中英文反模式、严格模式与骨架输出）。
 
+退出码：`0` = 通过，`1` = 发现问题，`2` = 用法 / 输入错误（文件不存在、非 UTF-8、`--fix` 与 `--json` 同用等）。`--json` 输出机器可读结果；批量模式含逐文件结果与 `skeleton`。
+
+Windows / PowerShell：请使用单行命令；读取中文提示词用 `Get-Content -Raw -Encoding UTF8 my-prompt.txt | python scripts/check_prompt.py -`，或直接传文件路径；解释器可能是 `python`。
+
 ## 接入 CI 与 pre-commit
 
 批量检查一个提示词目录（逐文件 PASS/FAIL + 汇总）：
@@ -121,26 +128,33 @@ python3 scripts/check_prompt.py prompts/ --strict
 
 目录默认递归匹配 `*.prompt`、`*.prompt.md`、`*.prompt.txt`（`--include` 可自定义）；多文件与目录可组合使用，`--fix` 不能与 `--json` / `--skeleton` 同用。
 
-pre-commit（在消费仓库的 `.pre-commit-config.yaml` 中）：
+pre-commit（用于消费仓库；`rev` 需指向已发布的 tag）。先安装并启用钩子：
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+然后在 `.pre-commit-config.yaml` 中：
 
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.8.1
+    rev: v1.9.0
     hooks:
       - id: code-refactor-prompt-check
 ```
 
-钩子通过 `pyproject.toml` 暴露 `code-refactor-prompt-check` console script，pre-commit 以 `language: python` 安装后直接调用；匹配 `\.prompt(\.(md|txt))?$` 的暂存文件会被批量交给检查器（`--strict`），有失败即阻止提交。
+钩子通过 `pyproject.toml` 暴露 `code-refactor-prompt-check` console script，pre-commit 以 `language: python` 安装后直接调用；匹配 `\.prompt(\.(md|txt))?$` 的暂存文件会被批量交给检查器（`--strict`），有失败即阻止提交。本地试用钩子（无需先发 tag）：`pre-commit try-repo . --ref HEAD --files my.prompt.txt`。
 
 ## CI 与发布
 
-- **CI**（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：push / PR 时校验技能结构、frontmatter、版本一致性、引用完整性、Markdown 文档结构（重复标题）与用例数、相对链接及禁止的过程性文案；对模板与专项变体做分级审计；自测提示词检查器；运行工具链回归测试；安装并测试打包后的 pre-commit console script；配置 Node 24 并实际执行全部 6 个可执行样例（go test / python unittest / cargo test / node --test / dotnet run / SQLite 结果集对比）；并 dry-run 一次发布打包。
+- **CI**（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：push 到 main / PR 时校验技能结构、frontmatter、版本一致性、引用完整性、Markdown 文档结构（重复标题）与用例数、相对链接及禁止的过程性文案；对模板与专项变体做分级审计；自测提示词检查器；运行工具链回归测试；安装并测试打包后的 pre-commit console script；用 `pre-commit try-repo` 做钩子端到端验证（好提示词通过、坏提示词阻断）；配置 Node 24 并实际执行全部 6 个可执行样例（go test / python unittest / cargo test / node --test / dotnet run / SQLite 结果集对比）；并 dry-run 一次发布打包。
 - **Release**（[.github/workflows/release.yml](.github/workflows/release.yml)）：推送 `v*` 标签后自动校验、审计模板、实跑样例、打包（`zip` / `tar.gz` / `SHA256SUMS`）并创建 GitHub Release。
 
 发布流程：
 
-1. 更新 `CHANGELOG.md` 与 `SKILL.md` 的 `metadata.version`；
+1. 更新 `CHANGELOG.md`、`SKILL.md` 的 `metadata.version` 与 `pyproject.toml` 的 `version`（校验脚本会强制它们与两个 README、钩子注释中的 `rev: vX.Y.Z` 一致）；
 2. 提交并推送 `main`；
 3. 打标签并推送：`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`；
 4. GitHub Actions 自动产出 Release 与附件。

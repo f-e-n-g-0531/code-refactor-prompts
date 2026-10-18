@@ -53,6 +53,22 @@ jobs:
       - name: Verify examples are executable
         run: python3 .github/scripts/verify_examples.py --require-all
 
+      - name: Test the pre-commit hook end to end
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/precommit-e2e-venv
+          /tmp/precommit-e2e-venv/bin/pip install --quiet --disable-pip-version-check pre-commit
+          mkdir -p .pre-commit-e2e
+          cp scripts/fixtures/good-prompt.txt .pre-commit-e2e/order.prompt.txt
+          cp scripts/fixtures/bad-prompt.txt .pre-commit-e2e/bad.prompt.txt
+          /tmp/precommit-e2e-venv/bin/pre-commit try-repo . --ref HEAD --files .pre-commit-e2e/order.prompt.txt
+          if /tmp/precommit-e2e-venv/bin/pre-commit try-repo . --ref HEAD --files .pre-commit-e2e/bad.prompt.txt; then
+            echo "::error::the pre-commit hook must reject a bad prompt"
+            exit 1
+          fi
+          rm -rf .pre-commit-e2e
+          echo "pre-commit hook end-to-end OK"
+
       - name: Build release notes from CHANGELOG
         run: python3 .github/scripts/release_notes.py "${{ steps.meta.outputs.tag }}" > release-notes.md
 
@@ -68,6 +84,26 @@ jobs:
             SKILL.md README.md README.en.md CHANGELOG.md LICENSE .gitignore .pre-commit-hooks.yaml pyproject.toml references examples scripts
           ( cd dist && sha256sum *.zip *.tar.gz > SHA256SUMS.txt )
           ls -lh dist
+
+      - name: Verify release artifacts
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import glob, zipfile
+          zips = glob.glob("dist/code-refactor-prompts-*.zip")
+          assert len(zips) == 1, zips
+          names = zipfile.ZipFile(zips[0]).namelist()
+          required = [
+              "code-refactor-prompts/SKILL.md",
+              "code-refactor-prompts/pyproject.toml",
+              "code-refactor-prompts/.pre-commit-hooks.yaml",
+              "code-refactor-prompts/scripts/check_prompt.py",
+          ]
+          missing = [entry for entry in required if entry not in names]
+          assert not missing, f"missing from artifact: {missing}"
+          assert not any("/.github/" in name for name in names), "artifact must not contain .github"
+          print("release artifact OK:", len(names), "entries")
+          PY
 
       - name: Publish release
         env:

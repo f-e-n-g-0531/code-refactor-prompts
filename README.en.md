@@ -43,7 +43,7 @@ code-refactor-prompts/
 │   └── tests/                    regression tests for the tooling (checker / composer / batch & hook / validator)
 └── .github/
     ├── workflows/
-    │   ├── ci.yml                validate + template audit + self-test + execute examples (push / PR)
+    │   ├── ci.yml                validate + template audit + self-test + execute examples (push to main / PR)
     │   └── release.yml           tag-driven automated release
     └── scripts/
         ├── validate_skill.py     structure, copy, markdown, version and test-count validation
@@ -61,9 +61,9 @@ code-refactor-prompts/
 - **Per-language guidance**: Java, Python, JS/TS, React, Go, Rust, C#, C++, SQL, Kotlin, Swift, Ruby, PHP.
 - **End-to-end workflows**: review-first, legacy baseline, multi-file batching, iterative repair.
 - **Batch checks and commit gating**: `check_prompt.py` accepts multiple files and directories (per-file PASS/FAIL plus a summary); `.pre-commit-hooks.yaml` lets pre-commit and CI gate on it directly.
-- **Tooling regression tests**: `scripts/tests/` covers the checker, composer, `--fix` loop, the 13-language matrix and the validator itself with 39 tests, run on every CI build.
+- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, the 13-language matrix and the validator itself with 49 tests, run on every CI build.
 - **Delivery checklist**: `references/checklists.md` walks from prompt authoring to merge.
-- **One-command composition**: `scripts/compose_prompt.py --code <file>` builds a filled eight-segment prompt (Chinese or English, auto-detects 13 languages and their test commands) and refuses to emit it unless it passes the shipped checker.
+- **One-command composition**: `scripts/compose_prompt.py --code <file>` builds a filled eight-segment prompt (Chinese or English, auto-detects 13 languages and their test commands); supplying both `--rule` (business rules) and `--case` (acceptance cases) produces a full tier-C prompt, and the result is refused unless it passes the shipped checker.
 - **Bilingual self-check**: `scripts/check_prompt.py` validates the eight segments and verifiability in Chinese and English, detects the prompt language and checks that the acceptance command matches it (e.g. Go requires `go test`), and flags anti-patterns such as "tweak the tests as well" or "rewrite the whole project". Adds `--strict` (warnings fail), `--skeleton` (print fill-in skeletons for missing segments) and `--fix` (append missing-segment skeletons to the file and re-check).
 - **Executable examples**: 6 runnable examples are run in CI by `verify_examples.py` (`go test` / `python -m unittest` / `cargo test` / `node --test` / `dotnet run` / SQLite result-set comparison), so docs cannot drift from code.
 - **Graded audit**: `audit_templates.py` runs the full checker over the default and English master templates, checks the 12 variants that carry a prompt block for an acceptance anchor and error-level anti-patterns, and checks the guard variant for its `NO_CODE_PROVIDED` / `NO_REFACTORING_NEEDED` markers (the quick-reference section is skipped).
@@ -75,6 +75,7 @@ code-refactor-prompts/
 1. Put this repository into DSH's skills directory: `~/.dsh/skills/`
 2. The directory must be named `code-refactor-prompts` and contain `SKILL.md`
 3. DSH discovers and registers the skill automatically
+4. The tooling needs Python 3.9+ (on Windows the interpreter is usually `python`, not `python3`)
 
 ## Usage
 
@@ -82,13 +83,18 @@ Ask the model to "refactor this code" or "give me a refactoring prompt". The ski
 
 ## Compose a prompt
 
+Run these commands from the skill repo root and replace `src/order.go` with your source file.
+
 ```bash
 python3 scripts/compose_prompt.py --code src/order.go --project order-pricing \
-    --pain "150-line Total function, magic numbers everywhere" --out prompt.txt
+    --pain "150-line Total function, magic numbers everywhere" \
+    --rule "books 10% off, electronics 5% off, 2% off above 100" \
+    --case "empty order -> 0" --case "book 100x1 -> 102.2" \
+    --output-lang en --out prompt.txt
 python3 scripts/check_prompt.py prompt.txt
 ```
 
-Language and default test command are auto-detected for Go / Python / Java / Rust / TypeScript / JavaScript / C# / Kotlin / Swift / Ruby / PHP / C++ / SQL. Composition self-checks the result and exits non-zero instead of emitting a prompt that would fail the checker.
+Without `--rule` / `--case` the output is a tier-B prompt (rules and cases stay as placeholders); supplying both produces a full tier-C prompt (business rules in the context, concrete cases in the acceptance criteria); supplying only one fills that half and leaves the other as a placeholder. Language and default test command are auto-detected for Go / Python / Java / Rust / TypeScript / JavaScript / C# / Kotlin / Swift / Ruby / PHP / C++ / SQL. Composition self-checks the result and exits non-zero instead of emitting a prompt that would fail the checker.
 
 ## Delivery checklist
 
@@ -107,6 +113,10 @@ cat my-prompt.txt | python3 scripts/check_prompt.py -
 
 It checks structure and known anti-patterns only (Chinese and English); semantic quality is still your call. CI self-tests the script with the good / bad fixtures, including a language-mismatch case, English anti-patterns, strict mode and the skeleton output.
 
+Exit codes: `0` = pass, `1` = problems found, `2` = usage / input error (missing file, non-UTF-8 input, `--fix` with `--json`, ...). `--json` emits machine-readable output; batch mode adds per-file results and `skeleton`.
+
+Windows / PowerShell: use single-line commands; read a Chinese prompt with `Get-Content -Raw -Encoding UTF8 my-prompt.txt | python scripts/check_prompt.py -`, or pass the file path directly; the interpreter may be `python` rather than `python3`.
+
 ## CI and pre-commit
 
 Check a whole prompts directory (per-file PASS/FAIL plus a summary):
@@ -117,24 +127,31 @@ python3 scripts/check_prompt.py prompts/ --strict
 
 Directories are scanned recursively for `*.prompt`, `*.prompt.md` and `*.prompt.txt` (override with `--include`); multiple files and directories can be combined, while `--fix` cannot be combined with `--json` or `--skeleton`.
 
-pre-commit (in the consuming repository's `.pre-commit-config.yaml`):
+pre-commit (for a consuming repository; `rev` must point at a published tag). Install and enable the hook first:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+Then in `.pre-commit-config.yaml`:
 
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.8.1
+    rev: v1.9.0
     hooks:
       - id: code-refactor-prompt-check
 ```
 
-The repo exposes a `code-refactor-prompt-check` console script via `pyproject.toml`, so pre-commit's `language: python` installs the hook and staged files matching `\.prompt(\.(md|txt))?$` are checked in `--strict` mode; any failure blocks the commit.
+The repo exposes a `code-refactor-prompt-check` console script via `pyproject.toml`, so pre-commit's `language: python` installs the hook and staged files matching `\.prompt(\.(md|txt))?$` are checked in `--strict` mode; any failure blocks the commit. To try the hook locally without publishing a tag: `pre-commit try-repo . --ref HEAD --files my.prompt.txt`.
 
 ## CI and release
 
-- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)): validates skill structure, frontmatter, version alignment, references, Markdown structure (duplicate headings) and test counts, links and copy; audits master templates and specialised variants; self-tests the prompt checker; runs the tooling regression suite; installs and tests the packaged pre-commit console script; sets up Node 24 and executes all 6 runnable examples (go test / python unittest / cargo test / node --test / dotnet run / SQLite comparison); dry-runs packaging.
+- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)): validates skill structure, frontmatter, version alignment, references, Markdown structure (duplicate headings) and test counts, links and copy; audits master templates and specialised variants; self-tests the prompt checker; runs the tooling regression suite; installs and tests the packaged pre-commit console script; runs the hook end to end with `pre-commit try-repo` (good prompt passes, bad prompt blocks); sets up Node 24 and executes all 6 runnable examples (go test / python unittest / cargo test / node --test / dotnet run / SQLite comparison); dry-runs packaging.
 - **Release** ([.github/workflows/release.yml](.github/workflows/release.yml)): on a `v*` tag it validates, audits templates, executes the examples, builds `zip` / `tar.gz` / `SHA256SUMS`, and publishes a GitHub Release.
 
-Release steps: update `CHANGELOG.md` and `metadata.version` → push `main` → `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`.
+Release steps: update `CHANGELOG.md`, `metadata.version` and the `pyproject.toml` version (the validator keeps them in sync with `rev: vX.Y.Z` in both READMEs and the hook comment) → push `main` → `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`.
 
 ## License
 
