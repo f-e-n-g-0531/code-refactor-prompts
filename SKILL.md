@@ -4,7 +4,7 @@ description: Compose high-quality, behavior-preserving code refactoring prompts.
 license: MIT
 metadata:
   author: f-e-n-g-0531
-  version: "1.15.0"
+  version: "1.15.1"
 ---
 
 # 代码重构优化提示词

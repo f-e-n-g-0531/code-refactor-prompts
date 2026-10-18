@@ -148,7 +148,7 @@ Then in `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.15.0
+    rev: v1.15.1
     hooks:
       - id: code-refactor-prompt-check
 ```
@@ -169,7 +169,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0        # changed-only needs the full history
-      - uses: f-e-n-g-0531/code-refactor-prompts@v1.15.0
+      - uses: f-e-n-g-0531/code-refactor-prompts@v1.15.1
         with:
           changed-only: true     # only prompts changed in this PR; otherwise files is used (repo root by default)
           strict: true           # warnings fail too

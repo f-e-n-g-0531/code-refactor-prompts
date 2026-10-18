@@ -2,6 +2,12 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.15.1] - 2026-10-18
+
+### Fixed
+
+- 发布包漏带 `CONTRIBUTING.md`：README 的贡献链接在 zip / tar.gz 中会指向不存在的文件。CI dry-run 与 Release 打包清单、入包断言现包含该文件；`validate_skill.py` 增加打包清单校验，防止再次漏文件。
+
 ## [1.15.0] - 2026-10-18
 
 ### Added

@@ -133,7 +133,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           git archive --format=zip --prefix=code-refactor-prompts/ -o dist/skill.zip HEAD \
-            SKILL.md README.md README.en.md CHANGELOG.md LICENSE .gitignore .pre-commit-hooks.yaml pyproject.toml action.yml references examples scripts
+            SKILL.md README.md README.en.md CONTRIBUTING.md CHANGELOG.md LICENSE .gitignore .pre-commit-hooks.yaml pyproject.toml action.yml references examples scripts
           python3 - <<'PY'
           import zipfile
           names = zipfile.ZipFile("dist/skill.zip").namelist()
@@ -148,6 +148,7 @@ jobs:
               "code-refactor-prompts/.pre-commit-hooks.yaml",
               "code-refactor-prompts/pyproject.toml",
               "code-refactor-prompts/action.yml",
+              "code-refactor-prompts/CONTRIBUTING.md",
           ]
           for entry in required:
               assert entry in names, f"missing from package: {entry}"
