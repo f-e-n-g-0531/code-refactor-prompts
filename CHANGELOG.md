@@ -2,6 +2,13 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.19.1] - 2026-10-20
+
+### Changed
+
+- 合并 Dependabot 的 GitHub Actions 依赖升级：`actions/checkout` 4 → 7、`actions/setup-java` 4 → 6、`actions/setup-node` 4 → 7、`actions/setup-python` 5 → 7；CI / Release / Link check workflows 同步，四个升级分支的 CI 均已通过。
+- README / README.en 的 Action 示例同步为 `actions/checkout@v7`；版本 1.19.1。
+
 ## [1.19.0] - 2026-10-20
 
 ### Fixed
