@@ -121,7 +121,7 @@ jobs:
           echo "pre-commit hook end-to-end OK"
 
       - name: Set up Node.js for the TypeScript example
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
 
