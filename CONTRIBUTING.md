@@ -5,7 +5,7 @@
 ## 环境
 
 - Python 3.9+、Git
-- 可选工具链：Go / Rust / Node.js 24 / .NET SDK（仅 `--full` 执行样例时需要）
+- 可选工具链：Go / Rust / Node.js 24 / .NET SDK / JDK 17（仅 `--full` 执行样例时需要）
 - 可选：pre-commit（验证提交钩子时使用）
 
 ## 一键本地门禁

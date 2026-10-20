@@ -32,6 +32,7 @@ REQUIRED_FILES = [
     "references/template-en.md",
     "references/checklists.md",
     "examples/java-order-calculator-strategy-c.md",
+    "examples/java-legacy-order-total.md",
     "examples/python-legacy-characterisation.md",
     "examples/go-legacy-order-total.md",
     "examples/rust-legacy-order-total.md",
@@ -61,6 +62,7 @@ REQUIRED_FILES = [
     ".github/scripts/verify_examples.py",
     ".github/scripts/audit_templates.py",
     ".github/workflows/link-check.yml",
+    ".github/dependabot.yml",
 ]
 
 # Process / placeholder copy that must never leak into a released skill.
@@ -338,6 +340,10 @@ def check_ci_wiring() -> None:
         errors.append("ci.yml：缺少跨平台校验（windows-latest 的 Windows runner）")
     if "Test tooling on Python 3.9" not in ci:
         errors.append("ci.yml：缺少 Python 3.9 兼容性任务（requires-python >=3.9）")
+    if "setup-java" not in ci:
+        errors.append("ci.yml：缺少 Java 样例的 JDK 配置（setup-java）")
+    if "setup-java" not in read(".github/workflows/release.yml"):
+        errors.append("release.yml：缺少 Java 样例的 JDK 配置（setup-java）")
     for workflow in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
         if "CONTRIBUTING.md" not in read(workflow):
             errors.append(f"{workflow}：发布打包未包含 CONTRIBUTING.md")
@@ -409,6 +415,19 @@ def check_action() -> None:
             errors.append(f"{workflow}：发布打包未包含 action.yml")
 
 
+def check_dependabot() -> None:
+    """GitHub Actions versions should be kept current by Dependabot."""
+    rel = ".github/dependabot.yml"
+    if not (ROOT / rel).is_file():
+        errors.append(f"缺少 {rel}")
+        return
+    text = read(rel)
+    if "github-actions" not in text:
+        errors.append(f"{rel}：缺少 github-actions 生态配置")
+    if "interval:" not in text:
+        errors.append(f"{rel}：缺少更新频率（interval）")
+
+
 def check_link_workflow() -> None:
     """The scheduled online link check must exist and request every URL."""
     rel = ".github/workflows/link-check.yml"
@@ -435,6 +454,7 @@ def main() -> int:
     check_ci_wiring()
     check_action()
     check_link_workflow()
+    check_dependabot()
     check_precommit_hook()
     check_copy()
     check_links()

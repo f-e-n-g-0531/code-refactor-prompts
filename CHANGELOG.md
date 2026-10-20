@@ -2,6 +2,19 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.18.0] - 2026-10-20
+
+### Added
+
+- 新增可执行 Java 样例 `examples/java-legacy-order-total.md`：无 JUnit / Maven 的遗留代码用「退出码断言程序」锁行为，覆盖 double 运算顺序、严格 `> 100` 满减、数量 ≤ 0 与 category=null 的 NPE；CI 安装 JDK 17 后真实执行 `javac` + `java Verify`（可执行样例 6 → 7）。
+- `verify_examples.py` 支持 Java 工具链（`javac` / `java`）；CI 与 Release 增加 `actions/setup-java`（Temurin 17）。
+- `check_prompt.py --fix` 改为按段落顺序**就位插入**缺失骨架（不再统一追加到文件末尾），保留「坏提示词 → 修复 → 复查」闭环。
+- 新增 `.github/dependabot.yml`：每周检查 GitHub Actions 版本更新；校验器强制该配置存在。
+
+### Changed
+
+- 测试新增 1 个用例（`--fix` 就位插入顺序），总数 74 → 75；README / README.en / SKILL / CONTRIBUTING 同步 Java 样例、JDK 17 与可执行样例数量；版本 1.18.0。
+
 ## [1.17.0] - 2026-10-18
 
 ### Added

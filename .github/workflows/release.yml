@@ -50,6 +50,12 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Set up Java for the Java example
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
       - name: Verify examples are executable
         run: python3 .github/scripts/verify_examples.py --require-all
 

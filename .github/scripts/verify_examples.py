@@ -60,6 +60,8 @@ TOOL_FOR_TOKEN = {
     "python": "python",
     "python3": "python",
     "pytest": "python",
+    "javac": "java",
+    "java": "java",
 }
 
 

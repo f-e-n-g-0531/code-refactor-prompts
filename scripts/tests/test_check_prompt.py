@@ -346,6 +346,25 @@ class CliTest(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertIn("cannot determine changed files", result.stderr)
 
+    def test_fix_inserts_missing_segments_in_place(self):
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "partial.prompt.txt"
+            target.write_text(
+                "你是资深 Go 工程师。\n\n"
+                "【待重构代码】\n"
+                "```go\npackage demo\n```\n\n"
+                "【验收标准】\n- 测试命令：go test ./...\n- 用例：空输入 → 0\n\n"
+                "【输出格式】\n1. 统一 diff（声明基线文件）。\n",
+                encoding="utf-8",
+            )
+            result = run_checker(str(target), "--fix")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            fixed = target.read_text(encoding="utf-8")
+            self.assertLess(fixed.index("【上下文】"), fixed.index("【待重构代码】"))
+            self.assertLess(fixed.index("【硬约束"), fixed.index("【重构目标】"))
+            self.assertLess(fixed.index("【重构目标】"), fixed.index("【验收标准】"))
+            self.assertIn("check_prompt.py --fix", fixed)
+
     def test_stdin_input(self):
         text = (FIXTURES / "good-prompt.txt").read_text(encoding="utf-8")
         result = run_checker("-", input_text=text)

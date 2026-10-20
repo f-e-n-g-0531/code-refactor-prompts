@@ -29,7 +29,8 @@ Options:
                  combined with --json / --fix)
     --strict     treat warnings as failures (CI gating)
     --skeleton   print fill-in skeletons for the segments that are missing
-    --fix        append fill-in skeletons for missing segments to the file, then re-check
+    --fix        insert fill-in skeletons for missing segments at their canonical
+                 position, then re-check
     --include    comma-separated glob patterns for directory scans
                  (default: *.prompt,*.prompt.md,*.prompt.txt)
 
@@ -430,25 +431,45 @@ def build_skeleton_blocks(text: str) -> list[str]:
     return skeleton_blocks(keys, looks_english(text))
 
 
+def segment_positions(text: str) -> dict[str, int]:
+    """Line-start offsets of the segments already present (safe insertion points)."""
+    positions: dict[str, int] = {}
+    for key, _label, pattern in SEGMENTS:
+        match = re.search(pattern, text, re.S | re.I)
+        if match:
+            positions[key] = text.rfind("\n", 0, match.start()) + 1
+    return positions
+
+
 def apply_fix_to_file(path: Path, language: str, strict: bool) -> dict:
-    """Append missing-segment skeletons to path, then return the re-checked result."""
+    """Insert missing-segment skeletons at their canonical position, then re-check."""
     text = read_text_file(path)
     result = check(text, explicit_language=language, strict=strict)
     keys = [item["segment"] for item in result["skeleton"]]
     if keys:
         english = looks_english(text)
+        table = SKELETONS_EN if english else SKELETONS_ZH
         note = (
-            "<!-- check_prompt.py --fix: missing-segment skeletons; move them into place and fill them in -->"
+            "<!-- check_prompt.py --fix: missing-segment skeletons inserted below; fill them in -->"
             if english
-            else "<!-- check_prompt.py --fix: 以下为缺失段落骨架，请移动到对应位置并补全 -->"
+            else "<!-- check_prompt.py --fix: 以下为缺失段落骨架（已尽量插入对应位置），请补全 -->"
         )
-        blocks = skeleton_blocks(keys, english)
-        path.write_text(
-            text.rstrip() + "\n\n" + note + "\n\n" + "\n\n".join(blocks) + "\n",
-            encoding="utf-8",
-        )
-        print(f"--fix: appended {len(blocks)} missing segment skeleton(s) to {path}", file=sys.stderr)
-        text = path.read_text(encoding="utf-8")
+        positions = segment_positions(text)
+        canonical = [key for key, _label, _pattern in SEGMENTS]
+        inserts: list[tuple[int, int, str]] = []
+        for key in keys:
+            index = canonical.index(key)
+            later = [positions[other] for other in canonical[index + 1 :] if other in positions]
+            offset = min(later) if later else len(text.rstrip())
+            inserts.append((offset, index, key))
+        updated = text.rstrip()
+        for offset, index, key in sorted(inserts, key=lambda item: (item[0], item[1]), reverse=True):
+            block = table[key]
+            updated = updated[:offset].rstrip() + "\n\n" + block + "\n\n" + updated[offset:].lstrip("\n")
+        updated = note + "\n\n" + updated.rstrip() + "\n"
+        path.write_text(updated, encoding="utf-8")
+        print(f"--fix: inserted {len(keys)} missing segment skeleton(s) into {path}", file=sys.stderr)
+        text = read_text_file(path)
         result = check(text, explicit_language=language, strict=strict)
     return result
 
@@ -684,7 +705,11 @@ def main() -> int:
     )
     parser.add_argument("--strict", action="store_true", help="treat warnings as failures")
     parser.add_argument("--skeleton", action="store_true", help="print fill-in skeletons for missing segments")
-    parser.add_argument("--fix", action="store_true", help="append missing-segment skeletons to the file and re-check")
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="insert missing-segment skeletons at their canonical position and re-check",
+    )
     args = parser.parse_args()
 
     if args.fix and (args.json or args.skeleton):
