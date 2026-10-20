@@ -47,14 +47,14 @@ import sys
 from pathlib import Path
 
 SEGMENTS = [
-    ("role", "角色", r"角色|你是|作为.{0,12}(工程师|专家|开发)|" r"you are|act as|senior .{0,30}(engineer|developer|architect)"),
-    ("context", "上下文", r"上下文|背景|\bcontext\b|\bbackground\b"),
-    ("code", "待重构代码", r"待重构代码|粘贴代码|代码如下|\x60\x60\x60|" r"code to refactor|paste (the |your )?code"),
-    ("constraints", "硬约束", r"硬约束|约束|" r"hard constraints?|must not|do not change"),
-    ("goals", "重构目标", r"重构目标|重构要求|目标|" r"refactoring goals?|\bgoal\b|\bgoals\b"),
-    ("acceptance", "验收标准", r"验收标准|验收|" r"acceptance criteria|acceptance|test command"),
-    ("output", "输出格式", r"输出格式|" r"output format"),
-    ("guard", "守卫", r"前置判断|NO_CODE_PROVIDED|NO_REFACTORING_NEEDED|守卫|" r"guard clauses?|no (code|refactoring) provided"),
+    ("role", "角色", r"【角色[^】]*】|^#{1,4}\s*(?:角色|role)|^\[ROLE|你是|" r"you are|act as|senior .{0,30}(engineer|developer|architect)"),
+    ("context", "上下文", r"【(?:上下文|背景)[^】]*】|^#{1,4}\s*(?:上下文|背景|context)|^\[CONTEXT"),
+    ("code", "待重构代码", r"【待重构代码[^】]*】|^#{1,4}\s*(?:待重构代码|code to refactor)|^\[CODE TO REFACTOR|代码如下|\x60\x60\x60|" r"paste (the |your )?code"),
+    ("constraints", "硬约束", r"【(?:硬)?约束[^】]*】|^#{1,4}\s*(?:硬约束|约束|constraints?|hard constraints?)|^\[HARD CONSTRAINTS"),
+    ("goals", "重构目标", r"【(?:重构)?目标[^】]*】|^#{1,4}\s*(?:重构目标|目标|refactoring goals?|goals?)|^\[REFACTORING GOALS"),
+    ("acceptance", "验收标准", r"【验收标准[^】]*】|^#{1,4}\s*(?:验收标准|acceptance criteria)|^\[ACCEPTANCE"),
+    ("output", "输出格式", r"【输出格式[^】]*】|^#{1,4}\s*(?:输出格式|output format)|^\[OUTPUT FORMAT"),
+    ("guard", "守卫", r"【(?:前置判断|守卫)[^】]*】|NO_CODE_PROVIDED|NO_REFACTORING_NEEDED|^#{1,4}\s*(?:守卫|guard clauses?)|^\[GUARD"),
 ]
 
 TEST_COMMAND = re.compile(
@@ -144,7 +144,7 @@ LANGUAGE_TEST_COMMANDS = {
     "ruby": r"rspec|rake\s+test",
     "php": r"phpunit|composer\s+test",
     "cpp": r"ctest|gtest|cmake\s+--build",
-    "sql": r"(EXPLAIN|执行|运行).{0,10}(查询|SQL)|期望(结果|行)|结果集",
+    "sql": r"(EXPLAIN|执行|运行).{0,10}(查询|SQL)|期望(结果|行)|结果集|golden\s+result[- ]?set|result[- ]?set\s+comparison",
 }
 
 LANGUAGE_EXPECTED_COMMAND = {
@@ -334,7 +334,9 @@ def check(text: str, explicit_language: str = "auto", strict: bool = False) -> d
     errors: list[dict] = []
     warnings: list[dict] = []
 
-    missing = [label for _key, label, pattern in SEGMENTS if not re.search(pattern, text, re.S | re.I)]
+    missing = [
+        label for _key, label, pattern in SEGMENTS if not re.search(pattern, text, re.S | re.M | re.I)
+    ]
     for label in missing:
         errors.append(error("missing-segment", f"缺少段落：{label}"))
 
@@ -435,7 +437,7 @@ def segment_positions(text: str) -> dict[str, int]:
     """Line-start offsets of the segments already present (safe insertion points)."""
     positions: dict[str, int] = {}
     for key, _label, pattern in SEGMENTS:
-        match = re.search(pattern, text, re.S | re.I)
+        match = re.search(pattern, text, re.S | re.M | re.I)
         if match:
             positions[key] = text.rfind("\n", 0, match.start()) + 1
     return positions
@@ -443,6 +445,9 @@ def segment_positions(text: str) -> dict[str, int]:
 
 def apply_fix_to_file(path: Path, language: str, strict: bool) -> dict:
     """Insert missing-segment skeletons at their canonical position, then re-check."""
+    raw = path.read_bytes()
+    has_bom = raw.startswith(b"\xef\xbb\xbf")
+    newline = "\r\n" if b"\r\n" in raw else "\n"
     text = read_text_file(path)
     result = check(text, explicit_language=language, strict=strict)
     keys = [item["segment"] for item in result["skeleton"]]
@@ -450,7 +455,7 @@ def apply_fix_to_file(path: Path, language: str, strict: bool) -> dict:
         english = looks_english(text)
         table = SKELETONS_EN if english else SKELETONS_ZH
         note = (
-            "<!-- check_prompt.py --fix: missing-segment skeletons inserted below; fill them in -->"
+            "<!-- check_prompt.py --fix: missing-segment skeletons inserted at their canonical positions; fill them in -->"
             if english
             else "<!-- check_prompt.py --fix: 以下为缺失段落骨架（已尽量插入对应位置），请补全 -->"
         )
@@ -467,7 +472,9 @@ def apply_fix_to_file(path: Path, language: str, strict: bool) -> dict:
             block = table[key]
             updated = updated[:offset].rstrip() + "\n\n" + block + "\n\n" + updated[offset:].lstrip("\n")
         updated = note + "\n\n" + updated.rstrip() + "\n"
-        path.write_text(updated, encoding="utf-8")
+        if newline != "\n":
+            updated = updated.replace("\n", newline)
+        path.write_bytes(updated.encode("utf-8-sig" if has_bom else "utf-8"))
         print(f"--fix: inserted {len(keys)} missing segment skeleton(s) into {path}", file=sys.stderr)
         text = read_text_file(path)
         result = check(text, explicit_language=language, strict=strict)
@@ -501,7 +508,7 @@ def missing_segment_line(text: str, label: str) -> int:
     index = labels.index(label)
     positions: list[int | None] = []
     for _key, _segment_label, pattern in SEGMENTS:
-        match = re.search(pattern, text, re.S | re.I)
+        match = re.search(pattern, text, re.S | re.M | re.I)
         positions.append(text[: match.start()].count("\n") + 1 if match else None)
     for later in positions[index + 1 :]:
         if later:
@@ -622,7 +629,9 @@ def run_batch(
                 "languages": result["languages"],
                 "language_source": result["language_source"],
                 "verifiable": result["verifiable"],
+                "strict": result["strict"],
                 "skeleton": blocks,
+                "skeleton_segments": result["skeleton"],
             }
         )
         if result["pass"]:
@@ -681,7 +690,7 @@ def main() -> int:
     parser.add_argument(
         "--changed",
         metavar="BASE",
-        help="check only prompt files changed since BASE (git diff BASE...HEAD); "
+        help="check only committed prompt files changed since BASE (git diff BASE...HEAD); "
         "cannot be combined with explicit sources",
     )
     parser.add_argument(
@@ -720,6 +729,9 @@ def main() -> int:
         return 2
     if args.format == "github" and args.fix:
         print("--format github cannot be combined with --fix", file=sys.stderr)
+        return 2
+    if args.format == "github" and args.skeleton:
+        print("--format github cannot be combined with --skeleton", file=sys.stderr)
         return 2
 
     language = args.lang.lower()
@@ -794,7 +806,10 @@ def main() -> int:
             return 2
         result = apply_fix_to_file(Path(source), language, args.strict)
         if result["pass"]:
-            print("PASS after fix: 8 segments present, acceptance criteria verifiable")
+            print(
+                "PASS after fix: 8 segments present, acceptance criteria verifiable "
+                "(fill in the inserted skeleton placeholders before use)"
+            )
         else:
             print(f"FAIL after fix: {len(result['errors'])} problem(s) found")
             for item in result["errors"]:
@@ -809,6 +824,7 @@ def main() -> int:
     if args.json:
         payload = dict(result)
         payload["skeleton"] = blocks
+        payload["skeleton_segments"] = result["skeleton"]
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     elif args.format == "github":
         label = None if source == "-" else source

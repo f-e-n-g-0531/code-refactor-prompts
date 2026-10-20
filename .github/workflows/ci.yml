@@ -189,7 +189,7 @@ jobs:
       - name: Check source links (offline)
         run: python scripts/check_sources.py
 
-      - name: Install package and test console script
+      - name: Install package and test checker
         run: |
           python -m pip install --quiet --disable-pip-version-check .
           if ($LASTEXITCODE -ne 0) { exit 1 }

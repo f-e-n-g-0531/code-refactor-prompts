@@ -260,6 +260,8 @@ class CliTest(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertTrue(payload["pass"])
         self.assertEqual(payload["languages"], ["python"])
+        self.assertEqual(payload["skeleton"], [])
+        self.assertEqual(payload["skeleton_segments"], [])
 
     def test_skeleton_output(self):
         result = run_checker("--skeleton", str(FIXTURES / "bad-prompt.txt"))
@@ -365,6 +367,57 @@ class CliTest(unittest.TestCase):
             self.assertLess(fixed.index("【重构目标】"), fixed.index("【验收标准】"))
             self.assertIn("check_prompt.py --fix", fixed)
 
+    def test_fix_preserves_bom_and_crlf(self):
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "bom.prompt.txt"
+            text = (
+                "\ufeff你是资深 Go 工程师。\r\n\r\n"
+                "【待重构代码】\r\n\x60\x60\x60go\r\npackage demo\r\n\x60\x60\x60\r\n\r\n"
+                "【验收标准】\r\n- 测试命令：go test ./...\r\n- 用例：空输入 → 0\r\n\r\n"
+                "【输出格式】\r\n1. 统一 diff（声明基线文件）。\r\n"
+            )
+            target.write_bytes(text.encode("utf-8"))
+            result = run_checker(str(target), "--fix")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            raw_bytes = target.read_bytes()
+            self.assertTrue(raw_bytes.startswith(b"\xef\xbb\xbf"))
+            self.assertIn(b"\r\n", raw_bytes)
+            self.assertEqual(run_checker(str(target)).returncode, 0)
+
+    def test_fix_does_not_treat_prose_as_segments(self):
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "prose.prompt.txt"
+            target.write_text(
+                "背景：目标是把代码改好。\n\n"
+                "【待重构代码】\n\x60\x60\x60go\npackage demo\n\x60\x60\x60\n\n"
+                "【验收标准】\n- 测试命令：go test ./...\n- 用例：空输入 → 0\n\n"
+                "【输出格式】\n1. 统一 diff（声明基线文件）。\n",
+                encoding="utf-8",
+            )
+            result = run_checker(str(target), "--fix")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            fixed = target.read_text(encoding="utf-8")
+            self.assertIn("【上下文】", fixed)
+            self.assertIn("【重构目标】", fixed)
+
+    def test_fix_inserts_missing_segments_in_place_english(self):
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "partial-en.prompt.txt"
+            target.write_text(
+                "You are a senior Go engineer.\n\n"
+                "[CODE TO REFACTOR]\n"
+                "```go\npackage demo\n```\n\n"
+                "[ACCEPTANCE CRITERIA]\n- Test command: go test ./...\n- Cases: empty -> 0\n\n"
+                "[OUTPUT FORMAT]\n1. Unified diff (state the baseline file).\n",
+                encoding="utf-8",
+            )
+            result = run_checker(str(target), "--fix")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            fixed = target.read_text(encoding="utf-8")
+            self.assertLess(fixed.index("[CONTEXT]"), fixed.index("[CODE TO REFACTOR]"))
+            self.assertLess(fixed.index("[HARD CONSTRAINTS"), fixed.index("[REFACTORING GOALS]"))
+            self.assertLess(fixed.index("[REFACTORING GOALS]"), fixed.index("[ACCEPTANCE CRITERIA]"))
+
     def test_stdin_input(self):
         text = (FIXTURES / "good-prompt.txt").read_text(encoding="utf-8")
         result = run_checker("-", input_text=text)
@@ -400,10 +453,11 @@ class CliTest(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIsNotNone(re.search(r"::error file=.+,line=\d+::", result.stdout))
 
-    def test_github_format_rejects_json_and_fix(self):
+    def test_github_format_rejects_json_fix_and_skeleton(self):
         fixture = str(FIXTURES / "good-prompt.txt")
         self.assertEqual(run_checker("--format", "github", "--json", fixture).returncode, 2)
         self.assertEqual(run_checker("--format", "github", "--fix", fixture).returncode, 2)
+        self.assertEqual(run_checker("--format", "github", "--skeleton", fixture).returncode, 2)
 
     def test_non_utf8_prompt_is_usage_error(self):
         with tempfile.TemporaryDirectory() as raw:

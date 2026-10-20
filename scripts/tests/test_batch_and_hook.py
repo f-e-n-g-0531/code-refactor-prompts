@@ -90,8 +90,11 @@ class BatchTest(unittest.TestCase):
         self.assertEqual(len(payload["results"]), 2)
         for item in payload["results"]:
             self.assertIn("skeleton", item)
+            self.assertIn("skeleton_segments", item)
+            self.assertIn("strict", item)
         failing = [item for item in payload["results"] if not item["pass"]][0]
         self.assertTrue(failing["skeleton"])
+        self.assertTrue(failing["skeleton_segments"])
 
     def test_include_override(self):
         self.write("custom.md", GOOD)

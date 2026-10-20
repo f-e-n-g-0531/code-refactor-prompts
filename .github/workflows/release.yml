@@ -27,6 +27,13 @@ jobs:
         id: meta
         run: |
           TAG="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}"
+          case "$TAG" in
+            v*) ;;
+            *)
+              echo "::error::tag must look like vX.Y.Z (got: $TAG)"
+              exit 1
+              ;;
+          esac
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
@@ -95,20 +102,29 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import glob, zipfile
+          import glob, hashlib, pathlib, tarfile, zipfile
           zips = glob.glob("dist/code-refactor-prompts-*.zip")
+          tars = glob.glob("dist/code-refactor-prompts-*.tar.gz")
           assert len(zips) == 1, zips
-          names = zipfile.ZipFile(zips[0]).namelist()
+          assert len(tars) == 1, tars
           required = [
               "code-refactor-prompts/SKILL.md",
               "code-refactor-prompts/pyproject.toml",
               "code-refactor-prompts/.pre-commit-hooks.yaml",
               "code-refactor-prompts/scripts/check_prompt.py",
+              "code-refactor-prompts/CONTRIBUTING.md",
           ]
-          missing = [entry for entry in required if entry not in names]
-          assert not missing, f"missing from artifact: {missing}"
-          assert not any("/.github/" in name for name in names), "artifact must not contain .github"
-          print("release artifact OK:", len(names), "entries")
+          zip_names = zipfile.ZipFile(zips[0]).namelist()
+          tar_names = tarfile.open(tars[0]).getnames()
+          for label, names in (("zip", zip_names), ("tar.gz", tar_names)):
+              missing = [entry for entry in required if entry not in names]
+              assert not missing, f"missing from {label}: {missing}"
+              assert not any("/.github/" in name for name in names), f"{label} must not contain .github"
+          sums = pathlib.Path("dist/SHA256SUMS.txt").read_text(encoding="utf-8")
+          for path in (zips[0], tars[0]):
+              digest = hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+              assert f"{digest}  {pathlib.Path(path).name}" in sums, f"SHA256SUMS mismatch for {path}"
+          print("release artifacts OK:", len(zip_names), "zip entries,", len(tar_names), "tar entries")
           PY
 
       - name: Publish release

@@ -6,7 +6,7 @@ Usage:
 
 The fast gate validates the skill structure, audits templates, runs the tooling
 regression tests and checks source links offline. --full additionally executes
-all runnable examples (needs Go / Rust / Node / .NET / Python toolchains).
+all runnable examples (needs Go / Rust / Node / .NET / Java / Python toolchains).
 """
 from __future__ import annotations
 

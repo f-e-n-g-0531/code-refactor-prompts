@@ -2,6 +2,27 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.19.0] - 2026-10-20
+
+### Fixed
+
+- 检查器段落识别改为「标题锚定」：上下文 / 背景、重构目标 / 目标等只认 `【…】`、`## 标题` 或 `[CONTEXT]` 形式，避免正文里的「背景：」「目标：」被误判为段落，`--fix` 因此会把标题补进正确位置而不是整段跳过。
+- compose 英文 SQL 默认验收命令现在被检查器识别（SQL 规则支持 `golden result-set` / `result-set comparison`），生成结果可通过 `--strict` 与 pre-commit 门禁。
+- compose `--output-lang en` 不再泄漏中文默认占位符：`--pain` 与 stdin 项目名按输出语言选择，英文输出不含 CJK（用户输入除外）。
+- `check_prompt.py --fix` 保留原文件的 BOM 与 CRLF，并在 PASS 提示中说明「插入的骨架仍需补全」，避免把结构通过误读为内容完成。
+- `check_sources.py` 对非 UTF-8 来源文件返回可读错误与退出码 2，不再抛 traceback。
+- `--format github` 与 `--skeleton` 现在明确拒绝（此前单文件静默丢弃骨架、批量混入注解流），文档同步。
+- 发布产物校验扩展为 zip + tar.gz + SHA256SUMS 一致性；`workflow_dispatch` 的 tag 必须以 `v` 开头；Windows CI 步骤改用准确的「安装包并验证检查器」表述。
+- 校验器新增守卫：README / SKILL 中 `--fix` 不得被描述为「追加 / append」；数量与测试数声明从「有则校验」改为「必须显式声明」；同一 H2 内禁止重复 H3；出处计数允许「19 条 / 21 个链接」写法。
+
+### Added
+
+- `--json` 新增 `skeleton_segments`（缺失段落元数据）与批量 `strict` 字段；文档说明 `skeleton` 为渲染块。
+
+### Changed
+
+- 测试新增 5 个用例（英文 SQL strict、英文默认无 CJK、非 UTF-8 出处、BOM/CRLF 保留、散文不误判段落），总数 76 → 81；README / README.en / SKILL 同步；版本 1.19.0。
+
 ## [1.18.0] - 2026-10-20
 
 ### Added

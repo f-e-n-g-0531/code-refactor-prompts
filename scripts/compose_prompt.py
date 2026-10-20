@@ -127,6 +127,11 @@ DEFAULT_TEST_COMMANDS_EN = {
     "sql": "golden result-set comparison on a fixed dataset",
 }
 
+DEFAULT_PAIN_ZH = "{一句话说明这段代码在做什么、哪里痛}"
+DEFAULT_PAIN_EN = "{one line on what this code does and where it hurts}"
+DEFAULT_STDIN_PROJECT_ZH = "从标准输入读取的代码"
+DEFAULT_STDIN_PROJECT_EN = "code read from stdin"
+
 
 def read_source_text(path: Path) -> str:
     """Read UTF-8 source (BOM tolerated) or raise a usage error for non-UTF-8 input."""
@@ -319,7 +324,7 @@ def main() -> int:
     parser.add_argument("--code", required=True, help="source file to embed, or - for stdin")
     parser.add_argument("--code-lang", help="override language auto-detection")
     parser.add_argument("--project", help="project/module name (default: file stem)")
-    parser.add_argument("--pain", default="{一句话说明这段代码在做什么、哪里痛}", help="known pain points")
+    parser.add_argument("--pain", help="known pain points (language-aware default)")
     parser.add_argument("--goal", action="append", default=[], help="refactoring goal (repeatable)")
     parser.add_argument("--constraint", action="append", default=[], help="extra hard constraint (repeatable)")
     parser.add_argument(
@@ -364,7 +369,9 @@ def main() -> int:
         except ComposeError as exc:
             print(exc, file=sys.stderr)
             return 2
-        default_project = "从标准输入读取的代码"
+        default_project = (
+            DEFAULT_STDIN_PROJECT_EN if args.output_lang == "en" else DEFAULT_STDIN_PROJECT_ZH
+        )
     else:
         source = Path(args.code)
         if not source.is_file():
@@ -404,7 +411,8 @@ def main() -> int:
         "language": language,
         "label": LANGUAGE_LABELS[language],
         "project": args.project or default_project,
-        "pain": args.pain,
+        "pain": args.pain
+        or (DEFAULT_PAIN_EN if args.output_lang == "en" else DEFAULT_PAIN_ZH),
         "code": code,
         "fence": fence_for(code),
         "fence_language": fence_language(language),

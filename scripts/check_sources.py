@@ -166,7 +166,12 @@ def main() -> int:
 
     occurrences: list[str] = []
     for path in files:
-        occurrences.extend(extract_urls(path.read_text(encoding="utf-8")))
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            print(f"cannot read {path}: not valid UTF-8; save it as UTF-8", file=sys.stderr)
+            return 2
+        occurrences.extend(extract_urls(text))
     references = len(occurrences)
     urls = list(dict.fromkeys(occurrences))
     if not urls:

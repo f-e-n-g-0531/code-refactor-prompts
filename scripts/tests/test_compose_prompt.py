@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -190,6 +191,33 @@ class ComposeTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("业务规则", result.stdout)
+
+    def test_english_sql_prompt_passes_strict_checker(self):
+        with tempfile.TemporaryDirectory() as raw:
+            source = Path(raw) / "report.sql"
+            source.write_text("SELECT 1;\n", encoding="utf-8")
+            result = run_compose("--code", str(source), "--output-lang", "en")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(
+                checker.check(result.stdout, explicit_language="sql", strict=True)["pass"]
+            )
+
+    def test_english_defaults_contain_no_cjk(self):
+        with tempfile.TemporaryDirectory() as raw:
+            source = Path(raw) / "total.py"
+            source.write_text(
+                "def total(items):\n    return sum(items)\n", encoding="utf-8"
+            )
+            result = run_compose("--code", str(source), "--output-lang", "en")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNone(re.search(r"[\u4e00-\u9fff]", result.stdout))
+        stdin = run_compose(
+            "--code", "-", "--code-lang", "python", "--output-lang", "en",
+            input_text="print(1)\n",
+        )
+        self.assertEqual(stdin.returncode, 0, stdin.stderr)
+        self.assertIn("code read from stdin", stdin.stdout)
+        self.assertIsNone(re.search(r"[\u4e00-\u9fff]", stdin.stdout))
 
     def test_unknown_extension_requires_code_lang(self):
         with tempfile.TemporaryDirectory() as raw:

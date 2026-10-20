@@ -145,36 +145,30 @@ def check_references_wired() -> None:
             errors.append(f"SKILL.md：未引用 {ref}")
 
 
+def _check_claim(rel: str, pattern: str, expected: int, unit: str) -> None:
+    claimed = re.search(pattern, read(rel))
+    if not claimed:
+        errors.append(f"{rel}：未声明{unit}数量（校验器要求显式声明以便核对）")
+        return
+    if int(claimed.group(1)) != expected:
+        errors.append(f"{rel} 声称 {claimed.group(1)} 个{unit}，实际 {expected} 个")
+
+
 def check_counts() -> None:
     readme = read("README.md")
     variants = len(re.findall(r"^##\s+\d+\.", read("references/specialized-prompts.md"), re.M))
-    claimed = re.search(r"(\d+)\s*个专项变体", readme)
-    if claimed and int(claimed.group(1)) != variants:
-        errors.append(f"README 声称 {claimed.group(1)} 个专项变体，实际 {variants} 个")
-
     sources = len(re.findall(r"^###\s+\d+\.", read("references/sources.md"), re.M))
-    claimed = re.search(r"出处与依据（(\d+) 条）", readme)
-    if claimed and int(claimed.group(1)) != sources:
-        errors.append(f"README 声称 {claimed.group(1)} 条出处，实际 {sources} 条")
-
     executable = sum(
         1
         for path in (ROOT / "examples").glob("*.md")
         if "<!-- verify:run" in path.read_text(encoding="utf-8")
     )
-    claimed = re.search(r"(\d+)\s*个可执行样例", readme)
-    if claimed and int(claimed.group(1)) != executable:
-        errors.append(f"README 声称 {claimed.group(1)} 个可执行样例，实际 {executable} 个")
-    readme_en = read("README.en.md")
-    claimed = re.search(r"(\d+)\s*runnable examples", readme_en)
-    if claimed and int(claimed.group(1)) != executable:
-        errors.append(f"README.en 声称 {claimed.group(1)} 个可执行样例，实际 {executable} 个")
-    claimed = re.search(r"(\d+)\s+specialised", readme_en)
-    if claimed and int(claimed.group(1)) != variants:
-        errors.append(f"README.en 声称 {claimed.group(1)} 个专项变体，实际 {variants} 个")
-    claimed = re.search(r"(\d+)\s+sources", readme_en)
-    if claimed and int(claimed.group(1)) != sources:
-        errors.append(f"README.en 声称 {claimed.group(1)} 条出处，实际 {sources} 条")
+    _check_claim("README.md", r"(\d+)\s*个专项变体", variants, "专项变体")
+    _check_claim("README.md", r"出处与依据（(\d+) 条", sources, "出处")
+    _check_claim("README.md", r"(\d+)\s*个可执行样例", executable, "可执行样例")
+    _check_claim("README.en.md", r"(\d+)\s*runnable examples", executable, "可执行样例")
+    _check_claim("README.en.md", r"(\d+)\s+specialised", variants, "专项变体")
+    _check_claim("README.en.md", r"(\d+)\s+sources", sources, "出处")
 
 
 def count_test_methods() -> int:
@@ -194,7 +188,9 @@ def check_test_counts() -> None:
         ("README.en.md", r"with\s+(\d+)\s+tests"),
     ):
         claimed = re.search(pattern, read(rel))
-        if claimed and int(claimed.group(1)) != actual:
+        if not claimed:
+            errors.append(f"{rel}：未声明工具链用例数（校验器要求显式声明以便核对）")
+        elif int(claimed.group(1)) != actual:
             errors.append(f"{rel} 声称 {claimed.group(1)} 个用例，实际 {actual} 个")
 
 
@@ -234,6 +230,21 @@ def check_markdown_structure() -> None:
         h2 = re.findall(r"^## \S.*$", text, re.M)
         for heading in sorted({h for h in h2 if h2.count(h) > 1}):
             errors.append(f"{rel}：二级标题重复「{heading[3:].strip()}」（疑似整段内容被重复粘贴）")
+        sections: list[tuple[str, list[str]]] = []
+        current = ""
+        current_h3: list[str] = []
+        for line in text.splitlines():
+            if line.startswith("## "):
+                if current_h3:
+                    sections.append((current, current_h3))
+                current, current_h3 = line, []
+            elif line.startswith("### ") and current:
+                current_h3.append(line)
+        if current_h3:
+            sections.append((current, current_h3))
+        for section, headings in sections:
+            for heading in sorted({h for h in headings if headings.count(h) > 1}):
+                errors.append(f"{rel}：{section} 内重复三级标题「{heading[4:].strip()}」")
 
 
 def check_version_refs(version: str | None) -> None:
@@ -352,7 +363,7 @@ def check_ci_wiring() -> None:
     release = read(".github/workflows/release.yml")
     if "pre-commit try-repo" not in release:
         errors.append("release.yml：未做 pre-commit 端到端测试（try-repo）")
-    if "release artifact OK" not in release:
+    if "release artifacts OK" not in release:
         errors.append("release.yml：缺少发布产物校验（必须含 pyproject.toml、不得含 .github）")
     for fixture in (
         "good-prompt.txt",
@@ -428,6 +439,15 @@ def check_dependabot() -> None:
         errors.append(f"{rel}：缺少更新频率（interval）")
 
 
+def check_fix_wording() -> None:
+    """--fix inserts at canonical positions; docs must not describe it as appending."""
+    for rel in ("README.md", "README.en.md", "SKILL.md"):
+        for match in re.finditer(r"--fix[^\n]{0,80}", read(rel)):
+            snippet = match.group(0)
+            if re.search(r"追加|append", snippet, re.I):
+                errors.append(f"{rel}：--fix 被描述为追加/append，但实现是就位插入：{snippet.strip()!r}")
+
+
 def check_link_workflow() -> None:
     """The scheduled online link check must exist and request every URL."""
     rel = ".github/workflows/link-check.yml"
@@ -451,6 +471,7 @@ def main() -> int:
     check_examples()
     check_test_counts()
     check_markdown_structure()
+    check_fix_wording()
     check_ci_wiring()
     check_action()
     check_link_workflow()

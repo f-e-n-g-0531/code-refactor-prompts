@@ -101,6 +101,16 @@ class SourceCheckTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("--jobs", result.stderr)
 
+    def test_non_utf8_sources_file_is_usage_error(self):
+        path = write_temp("placeholder")
+        try:
+            path.write_bytes("链接：https://example.com".encode("gbk"))
+            result = run(str(path))
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("not valid UTF-8", result.stderr)
+        finally:
+            path.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()

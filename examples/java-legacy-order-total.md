@@ -225,4 +225,4 @@ public class Verify {
 
 ## 5. 可执行验证
 
-六个代码块分别标注了最终文件名。CI 安装 JDK 17 后执行上方 `verify:run` 命令：`javac` 编译全部源码，`java Verify` 做逐例差分与 NPE 断言；本地可只跑该样例：`python3 .github/scripts/verify_examples.py --only java-legacy-order-total`。
+五个代码块分别标注了最终文件名。CI 安装 JDK 17 后执行上方 `verify:run` 命令：`javac` 编译全部源码，`java Verify` 做逐例差分与 NPE 断言；本地可只跑该样例：`python3 .github/scripts/verify_examples.py --only java-legacy-order-total`。
