@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import shutil
@@ -30,8 +31,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCES = ROOT / "references" / "sources.md"
-URL_RE = re.compile(r"https?://[^\s<>()\[\]\"'\x60，。；、]+")
-TRAILING = ".,;:!?)]}>，。；、"
+URL_RE = re.compile(r"https?://[^\s<>\[\]\"'\x60，。；、]+")
+TRAILING = ".,;:!?]>}，。；、"
 USER_AGENT = (
     "Mozilla/5.0 (compatible; code-refactor-prompts-link-check/1.0; "
     "+https://github.com/f-e-n-g-0531/code-refactor-prompts)"
@@ -40,13 +41,29 @@ WARN_STATUSES = {403, 429}
 
 
 def extract_urls(text: str) -> list[str]:
-    """Return every URL occurrence in order, stripped of trailing punctuation."""
-    return [match.group(0).rstrip(TRAILING) for match in URL_RE.finditer(text)]
+    """Return every URL occurrence in order, stripped of trailing punctuation.
+
+    Parentheses stay inside URLs (e.g. Wikipedia titles); a trailing ')' is
+    dropped only while the URL has fewer '(' than ')', which covers Markdown
+    links and parenthesised prose without truncating real URLs.
+    """
+    urls = []
+    for match in URL_RE.finditer(text):
+        url = match.group(0).rstrip(TRAILING)
+        while url.endswith(")") and url.count("(") < url.count(")"):
+            url = url[:-1]
+        urls.append(url)
+    return urls
 
 
 def validate(url: str) -> str | None:
     """Return an error message for a malformed URL, else None."""
-    parsed = urllib.parse.urlparse(url)
+    try:
+        parsed = urllib.parse.urlparse(url)
+        # Accessing .port performs urllib's numeric and range validation.
+        parsed.port
+    except ValueError as exc:
+        return f"malformed URL: {exc}"
     if parsed.scheme not in {"http", "https"}:
         return f"unsupported scheme {parsed.scheme!r}"
     if not parsed.netloc:
@@ -150,8 +167,8 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args()
 
-    if args.timeout <= 0:
-        print("--timeout must be positive", file=sys.stderr)
+    if not math.isfinite(args.timeout) or args.timeout <= 0:
+        print("--timeout must be positive and finite", file=sys.stderr)
         return 2
     if args.jobs <= 0:
         print("--jobs must be positive", file=sys.stderr)

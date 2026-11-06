@@ -121,6 +121,11 @@ class ComposeTest(unittest.TestCase):
         self.assertIn("图书 9 折，电子 95 折", result.stdout)
         self.assertIn("空订单 -> 0", result.stdout)
         self.assertNotIn("{给定输入 → 期望输出}", result.stdout)
+        self.assertIn(
+            "- 业务规则（必须保持，逐条写进验收用例）：\n  - 图书 9 折，电子 95 折\n\n【待重构代码】",
+            result.stdout,
+        )
+        self.assertIn("- 用例：\n  - 空订单 -> 0\n  - 图书 100x1 -> 102.2\n", result.stdout)
         self.assertTrue(checker.check(result.stdout, explicit_language="go")["pass"])
 
     def test_english_rules_and_cases_produce_tier_c_prompt(self):
@@ -139,6 +144,11 @@ class ComposeTest(unittest.TestCase):
         self.assertIn("VIP orders get 10% off", result.stdout)
         self.assertIn("  - empty order -> 0", result.stdout)
         self.assertNotIn("(fill in with the baseline tests)", result.stdout)
+        self.assertIn(
+            "- Business rules (must preserve, one acceptance case each):\n  - VIP orders get 10% off\n\n[CODE TO REFACTOR]",
+            result.stdout,
+        )
+        self.assertIn("- Cases:\n  - empty order -> 0\n\n[OUTPUT FORMAT]", result.stdout)
 
     def test_generated_prompt_includes_injection_guard(self):
         zh = run_compose("--code", str(SAMPLE_GO))

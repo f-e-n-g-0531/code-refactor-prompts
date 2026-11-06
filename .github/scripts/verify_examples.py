@@ -38,6 +38,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -60,13 +61,33 @@ TOOL_FOR_TOKEN = {
     "python": "python",
     "python3": "python",
     "pytest": "python",
-    "javac": "java",
+    "javac": "javac",
     "java": "java",
 }
 
 
 class ExampleError(Exception):
     pass
+
+
+def remove_tree_with_retry(directory: Path, attempts: int = 6, delay: float = 0.5) -> None:
+    """Remove a temp tree, tolerating transient external holds on Windows.
+
+    A toolchain or external scanner can briefly hold a freshly built file
+    (e.g. a Go test binary) right after execution, making the first rmtree
+    raise PermissionError (WinError 32). Retry a bounded number of times and
+    re-raise when the hold persists, so real leaks still fail loudly.
+    """
+    for attempt in range(attempts):
+        try:
+            shutil.rmtree(directory)
+            return
+        except FileNotFoundError:
+            return  # already removed
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(delay)
 
 
 def parse_example(path: Path) -> tuple[list[tuple[str, str]], list[str]]:
@@ -166,8 +187,9 @@ def verify_example(path: Path) -> tuple[str, list[str]]:
     if missing:
         return "missing-toolchain", missing
 
-    with tempfile.TemporaryDirectory(prefix="example-") as raw_tmp:
-        tmp = Path(raw_tmp)
+    raw_tmp = tempfile.mkdtemp(prefix="example-")
+    tmp = Path(raw_tmp)
+    try:
         for name, content in files:
             target = tmp / name
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -199,10 +221,15 @@ def verify_example(path: Path) -> tuple[str, list[str]]:
                 raise ExampleError(
                     f"command failed ({result.returncode}): {command}\n{output[-4000:]}"
                 )
+    finally:
+        remove_tree_with_retry(Path(raw_tmp))
     return "passed", commands
 
 
 def main() -> int:
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="Execute verifiable worked examples.")
     parser.add_argument("--only", help="single example file stem")
     parser.add_argument("--require-all", action="store_true", help="fail on missing toolchains")

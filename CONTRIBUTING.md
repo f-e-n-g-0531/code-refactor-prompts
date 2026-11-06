@@ -23,7 +23,7 @@ python3 scripts/run_checks.py --full   # 额外真实执行 examples/ 里的全�
 - `references/`：专项变体、分语言要点、工作流、检查清单、出处；变体必须有可验证的验收锚点。
 - `examples/`：实战样例；可执行样例用 `<!-- verify:run -->` 与 `<!-- verify:file=NAME -->` 标记，CI 会真实执行。
 - `scripts/`：检查器、生成器、出处巡检、一键门禁与回归测试。
-- `.github/`：CI、发布、每周链接巡检与校验脚本（不随发布包分发）。
+- `.github/`：CI、发布、每周链接巡检与校验脚本；发布包包含 `.github/scripts/` 以支持本地门禁，不包含工作流与 Dependabot 配置。
 
 ## 修改提示词资产
 

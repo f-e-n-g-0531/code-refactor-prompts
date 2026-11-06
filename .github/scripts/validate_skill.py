@@ -61,8 +61,9 @@ REQUIRED_FILES = [
     "scripts/fixtures/weak-prompt.txt",
     ".github/scripts/verify_examples.py",
     ".github/scripts/audit_templates.py",
-    ".github/workflows/link-check.yml",
-    ".github/dependabot.yml",
+    ".github/scripts/validate_skill.py",
+    ".github/scripts/release_notes.py",
+    ".github/scripts/package_skill.py",
 ]
 
 # Process / placeholder copy that must never leak into a released skill.
@@ -77,15 +78,24 @@ BANNED_PATTERNS = [
 ]
 
 errors: list[str] = []
-warnings: list[str] = []
 
 
 def read(rel: str) -> str:
     return (ROOT / rel).read_text(encoding="utf-8")
 
 
+def is_distribution() -> bool:
+    """Only an explicit package marker disables repository-only wiring checks."""
+    marker = ROOT / ".skill-package"
+    return marker.is_file() and marker.read_text(encoding="utf-8") == "code-refactor-prompts distribution v1\n"
+
+
 def check_required_files() -> None:
-    for rel in REQUIRED_FILES:
+    repository_files = [] if is_distribution() else [
+        ".github/workflows/ci.yml", ".github/workflows/release.yml",
+        ".github/workflows/link-check.yml", ".github/dependabot.yml",
+    ]
+    for rel in REQUIRED_FILES + repository_files:
         if not (ROOT / rel).is_file():
             errors.append(f"缺少必需文件：{rel}")
 
@@ -266,7 +276,11 @@ def check_version_refs(version: str | None) -> None:
             if got != version:
                 errors.append(f"{rel}：Action 示例 @v{got} 与 metadata.version {version} 不一致")
     pyproject = read("pyproject.toml")
-    declared = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.M)
+    # Anchor to the [project] table so an unrelated "version" key (e.g. in a
+    # [tool.*] table) cannot satisfy the check. Must stay in sync with
+    # release_notes.validate_tag().
+    section = re.search(r"^\[project\][ \t]*\n(.*?)(?=^\[|\Z)", pyproject, re.M | re.S)
+    declared = re.search(r'^version\s*=\s*"([^"]+)"', section.group(1), re.M) if section else None
     if not declared:
         errors.append("pyproject.toml：缺少 version（应与 SKILL.md 的 metadata.version 一致）")
     elif declared.group(1) != version:
@@ -328,6 +342,8 @@ def check_examples() -> None:
 
 def check_ci_wiring() -> None:
     """The prompt checker self-tests and example verification must run in CI."""
+    if is_distribution():
+        return
     ci = read(".github/workflows/ci.yml")
     if "verify_examples.py" not in ci:
         errors.append("ci.yml：未接入 verify_examples.py（可执行样例将不再被验证）")
@@ -356,15 +372,15 @@ def check_ci_wiring() -> None:
     if "setup-java" not in read(".github/workflows/release.yml"):
         errors.append("release.yml：缺少 Java 样例的 JDK 配置（setup-java）")
     for workflow in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
-        if "CONTRIBUTING.md" not in read(workflow):
-            errors.append(f"{workflow}：发布打包未包含 CONTRIBUTING.md")
+        if "package_skill.py" not in read(workflow) or "--verify" not in read(workflow):
+            errors.append(f"{workflow}：未接入统一打包与解压门禁 package_skill.py --verify")
     if "--format github" not in ci:
         errors.append("ci.yml：未自测 GitHub 注解输出（--format github）")
     release = read(".github/workflows/release.yml")
     if "pre-commit try-repo" not in release:
         errors.append("release.yml：未做 pre-commit 端到端测试（try-repo）")
-    if "release artifacts OK" not in release:
-        errors.append("release.yml：缺少发布产物校验（必须含 pyproject.toml、不得含 .github）")
+    if 'release_notes.py "$TAG"' not in release:
+        errors.append("release.yml：缺少发布标签与当前版本校验")
     for fixture in (
         "good-prompt.txt",
         "good-go-prompt.txt",
@@ -395,12 +411,6 @@ def check_precommit_hook() -> None:
         errors.append("pyproject.toml：缺少 [project.scripts] code-refactor-prompt-check = \"check_prompt:main\"")
     if "py-modules" not in pyproject or "check_prompt" not in pyproject:
         errors.append("pyproject.toml：未声明 check_prompt 模块（py-modules / package-dir）")
-    for workflow in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
-        text = read(workflow)
-        if ".pre-commit-hooks.yaml" not in text:
-            errors.append(f"{workflow}：发布打包未包含 .pre-commit-hooks.yaml")
-        if "pyproject.toml" not in text:
-            errors.append(f"{workflow}：发布打包未包含 pyproject.toml（pre-commit 安装依赖它）")
 
 
 def check_action() -> None:
@@ -421,13 +431,12 @@ def check_action() -> None:
     for marker in ("changed-only", "BASE_SHA", "--changed"):
         if marker not in text:
             errors.append(f"{rel}：缺少 changed-only 模式接线（{marker}）")
-    for workflow in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
-        if "action.yml" not in read(workflow):
-            errors.append(f"{workflow}：发布打包未包含 action.yml")
 
 
 def check_dependabot() -> None:
     """GitHub Actions versions should be kept current by Dependabot."""
+    if is_distribution():
+        return
     rel = ".github/dependabot.yml"
     if not (ROOT / rel).is_file():
         errors.append(f"缺少 {rel}")
@@ -450,6 +459,8 @@ def check_fix_wording() -> None:
 
 def check_link_workflow() -> None:
     """The scheduled online link check must exist and request every URL."""
+    if is_distribution():
+        return
     rel = ".github/workflows/link-check.yml"
     if not (ROOT / rel).is_file():
         errors.append(f"缺少 {rel}（sources.md 的在线巡检）")
@@ -462,7 +473,13 @@ def check_link_workflow() -> None:
 
 
 def main() -> int:
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     check_required_files()
+    if errors:
+        print("\n".join(errors))
+        return 1
     version = check_frontmatter()
     check_version(version)
     check_version_refs(version)
@@ -480,8 +497,6 @@ def main() -> int:
     check_copy()
     check_links()
 
-    for warning in warnings:
-        print(f"WARN: {warning}")
     if errors:
         print(f"FAILED: {len(errors)} problem(s) found")
         for item in errors:

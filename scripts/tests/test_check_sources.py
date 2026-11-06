@@ -4,6 +4,7 @@ Run with:  python3 -m unittest discover -s scripts/tests -p "test_*.py" -v
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -56,6 +57,25 @@ class SourceCheckTest(unittest.TestCase):
         finally:
             path.unlink()
 
+    def test_parenthesised_urls_are_preserved(self):
+        path = write_temp(
+            "See https://en.wikipedia.org/wiki/Function_(mathematics) and "
+            "[wiki](https://example.com/f(x)) plus (https://example.com/plain).\n"
+        )
+        try:
+            result = run(str(path), "--json")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["unique_urls"], 3)
+            found = {entry["url"] for entry in payload["urls"]}
+            self.assertEqual(found, {
+                "https://en.wikipedia.org/wiki/Function_(mathematics)",
+                "https://example.com/f(x)",
+                "https://example.com/plain",
+            })
+        finally:
+            path.unlink()
+
     def test_duplicate_urls_are_counted_once(self):
         path = write_temp(
             "https://example.com/a\nhttps://example.com/a\nhttps://example.com/b\n"
@@ -76,6 +96,36 @@ class SourceCheckTest(unittest.TestCase):
             self.assertIn("missing host", result.stdout)
         finally:
             path.unlink()
+
+    def test_ports_are_validated_offline(self):
+        for port, valid in [("abc", False), ("99999", False), ("-1", False),
+                            ("0", True), ("443", True), ("65535", True)]:
+            with self.subTest(port=port):
+                path = write_temp(f"https://example.com:{port}/a\n")
+                try:
+                    result = run(str(path), "--json")
+                    self.assertEqual(result.returncode, 0 if valid else 1)
+                    payload = json.loads(result.stdout)
+                    self.assertEqual(payload["pass"], valid)
+                    self.assertEqual(payload["urls"][0]["status"], "pass" if valid else "invalid")
+                finally:
+                    path.unlink()
+
+    def test_malformed_authority_returns_validation_error(self):
+        spec = importlib.util.spec_from_file_location("check_sources_under_test", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        for url in ("https://[broken/a", "https://example.com:abc/a", "https://example.com:99999/a"):
+            with self.subTest(url=url):
+                self.assertIsNotNone(module.validate(url))
+
+    def test_nonfinite_timeout_is_usage_error(self):
+        for value in ("nan", "inf", "-inf"):
+            with self.subTest(value=value):
+                result = run("--timeout=" + value)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("--timeout", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
 
     def test_no_urls_is_a_failure(self):
         path = write_temp("没有链接\n")

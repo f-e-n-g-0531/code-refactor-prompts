@@ -34,6 +34,9 @@ FULL_STEPS = [
 
 
 def main() -> int:
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="Run the local quality gate.")
     parser.add_argument("--full", action="store_true", help="also execute the runnable examples")
     parser.add_argument("--list", action="store_true", help="list the steps and exit")

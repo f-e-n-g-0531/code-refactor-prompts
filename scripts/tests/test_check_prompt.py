@@ -146,6 +146,51 @@ def run_checker(*args, input_text=None, cwd=None):
 
 
 class FixtureTest(unittest.TestCase):
+    def test_segment_locations_preserve_first_match_and_line_offsets(self):
+        texts = ["", "no headings",
+                 "prefix\n【上下文】\nbody\n【验收标准】\npytest",
+                 "prefix\r\n## CONTEXT\r\nbody\r\n[ACCEPTANCE CRITERIA]\r\npytest",
+                 "preamble\nYou are a senior engineer\n## Context\n## Context\n",
+                 "【输出格式】\npatch\n【上下文】\n【重构目标】\n",
+                 "before inline 【上下文】 text\nNO_CODE_PROVIDED"]
+        for text in texts:
+            with self.subTest(text=text):
+                matches = [re.search(pattern, text, re.S | re.M | re.I)
+                           for _, _, pattern in checker.SEGMENTS]
+                positions = {key: text.rfind("\n", 0, match.start()) + 1
+                             for (key, _, _), match in zip(checker.SEGMENTS, matches) if match}
+                self.assertEqual(checker.segment_positions(text), positions)
+                self.assertEqual(checker.check(text)["missing_segments"],
+                                 [label for (_, label, _), match in zip(checker.SEGMENTS, matches) if not match])
+                lines = [text[:match.start()].count("\n") + 1 if match else None for match in matches]
+                for index, (_, label, _) in enumerate(checker.SEGMENTS):
+                    later = next((line for line in lines[index + 1:] if line), None)
+                    earlier = next((line for line in reversed(lines[:index]) if line), 1)
+                    expected = max(1, later - 1) if later else earlier
+                    self.assertEqual(checker.missing_segment_line(text, label), expected)
+                self.assertEqual(checker.missing_segment_line(text, "unknown"), 1)
+
+    def test_verifiability_rules_match_global_and_section_checks(self):
+        cases = [
+            ("", False), ("see above", False), ("input -> output", False),
+            ("input → output", False), ("a -> b → c", True),
+            ("a -> b -> c", True), ("a → b → c", True),
+            ("PYTEST", True), ("expected", True), ("expectations", True),
+            ("unexpected", False), ("期望", True),
+        ]
+        for body, expected in cases:
+            with self.subTest(body=body):
+                text = "[ACCEPTANCE CRITERIA]\n" + body
+                result = checker.check(text)
+                self.assertEqual(result["verifiable"], expected)
+                errors, warnings = [], []
+                checker.check_section_content(text, errors, warnings)
+                self.assertEqual(errors, [])
+                self.assertEqual(
+                    [item["code"] for item in warnings],
+                    [] if expected else ["acceptance-section-unverifiable"],
+                )
+
     def test_fixtures(self):
         for name, expected_pass in FIXTURE_EXPECTATIONS:
             with self.subTest(fixture=name):
@@ -254,6 +299,42 @@ class FixtureTest(unittest.TestCase):
 
 
 class CliTest(unittest.TestCase):
+    def test_github_annotation_escaping_and_optional_location(self):
+        self.assertEqual(
+            checker.github_annotation("warning", "dir\\a%file", "x%\r\ny", 3),
+            "::warning file=dir/a%25file,line=3::x%25%0D%0Ay",
+        )
+        self.assertEqual(checker.github_annotation("error", None, "x", 3), "::error::x")
+        self.assertEqual(checker.github_annotation("notice", "a", "x", 0), "::notice file=a::x")
+
+    def test_github_empty_prompt_exact_output_in_all_modes(self):
+        messages = ["缺少段落：" + label for label in
+                    ["角色", "上下文", "待重构代码", "硬约束", "重构目标", "验收标准", "输出格式", "守卫"]]
+        messages.append("验收标准不可验证：未发现测试命令，也没有「输入 → 期望输出」用例")
+        warnings = ["硬约束未显式约束行为 / API / 签名 / 异常兼容性",
+                    "输出格式未约定 unified diff / 完整文件 / patch"]
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "empty.prompt.txt"
+            target.write_text("", encoding="utf-8")
+            for mode in ("stdin", "file", "batch"):
+                with self.subTest(mode=mode):
+                    source = "-" if mode == "stdin" else str(Path(raw) if mode == "batch" else target)
+                    result = run_checker(source, "--format", "github", input_text="")
+                    location = "" if mode == "stdin" else " file=" + str(target).replace("\\", "/")
+                    lines = []
+                    for index, message in enumerate(messages):
+                        line = ",line=1" if location and index < 8 else ""
+                        lines.append(f"::error{location}{line}::{message}")
+                    lines.extend(f"::warning{location}::{message}" for message in warnings)
+                    if mode == "batch":
+                        lines.append("\n0 passed, 1 failed (1 file(s) checked)")
+                    else:
+                        label = "(stdin)" if mode == "stdin" else str(target)
+                        lines.append(f"9 error(s), 2 warning(s) in {label}")
+                    self.assertEqual(result.returncode, 1)
+                    self.assertEqual(result.stderr, "")
+                    self.assertEqual(result.stdout, "\n".join(lines) + "\n")
+
     def test_json_output_for_english_prompt(self):
         result = run_checker("--json", str(FIXTURES / "good-en-prompt.txt"))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

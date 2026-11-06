@@ -2,6 +2,28 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。
 
+## [1.20.0] - 2026-11-06
+
+### Added
+
+- 新增统一打包入口 `.github/scripts/package_skill.py`：CI 与 Release 共用同一份清单生成 `zip` / `tar.gz` / `SHA256SUMS`，并在解压产物中实际运行本地门禁。发布包包含 `.github/scripts/`，不包含工作流与 Dependabot 配置。
+- 发布标签必须是规范 `vX.Y.Z`，并与当前 `SKILL.md` 与 `pyproject.toml` 版本一致；标签经环境变量传入，不再直接插进 shell。
+- 模板审计只允许第 6 节合法参考表缺少提示词代码块；其余变体缺块即失败，守卫必须同时包含 `NO_CODE_PROVIDED` 与 `NO_REFACTORING_NEEDED`。
+- 出处检查拒绝非数字、超范围与非有限超时；含括号的 URL（如 Wikipedia 标题）不再被截断。
+- 测试 81 → 119：覆盖模板审计负向变异、发布标签、真实解压门禁、URL 边界、版本解析分叉与 Windows 临时文件占用重试。
+
+### Fixed
+
+- 分发包不再宣传一个解压后无法执行的本地门禁：打包清单与校验器按「仓库 / 分发包」区分必需文件。
+- Windows 上外部进程短暂占用刚写入的归档或样例产物时，临时目录清理有界重试；持续占用仍报错，不吞掉真实句柄泄漏。
+- `validate_skill.py` 与 `release_notes.py` 对版本的读取对齐：只认 `[project]` 段版本，SKILL frontmatter 接受合法缩进。
+- 样例验证探测 `javac` 本身，不再把仅有 JRE 的环境误判为 Java 样例失败；门禁脚本在非 UTF-8 标准输出下仍能打印中文错误。
+
+### Changed
+
+- 检查器统一可验证性判断、GitHub 注解输出与段落匹配；生成器共用中英文规则与验收用例装配。公开 CLI、退出码与既有检查文案不变。
+- README / README.en 同步打包入口、发布包内容、标签约束与 119 个用例。
+
 ## [1.19.1] - 2026-10-20
 
 ### Changed

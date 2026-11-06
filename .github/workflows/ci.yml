@@ -134,34 +134,8 @@ jobs:
       - name: Verify examples are executable
         run: python3 .github/scripts/verify_examples.py --require-all
 
-      - name: Dry-run release packaging
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          git archive --format=zip --prefix=code-refactor-prompts/ -o dist/skill.zip HEAD \
-            SKILL.md README.md README.en.md CONTRIBUTING.md CHANGELOG.md LICENSE .gitignore .pre-commit-hooks.yaml pyproject.toml action.yml references examples scripts
-          python3 - <<'PY'
-          import zipfile
-          names = zipfile.ZipFile("dist/skill.zip").namelist()
-          required = [
-              "code-refactor-prompts/SKILL.md",
-              "code-refactor-prompts/references/template-en.md",
-              "code-refactor-prompts/examples/rust-legacy-order-total.md",
-              "code-refactor-prompts/examples/typescript-legacy-characterisation.md",
-              "code-refactor-prompts/examples/csharp-legacy-order-total.md",
-              "code-refactor-prompts/examples/sql-legacy-report-equivalence.md",
-              "code-refactor-prompts/scripts/check_prompt.py",
-              "code-refactor-prompts/.pre-commit-hooks.yaml",
-              "code-refactor-prompts/pyproject.toml",
-              "code-refactor-prompts/action.yml",
-              "code-refactor-prompts/CONTRIBUTING.md",
-          ]
-          for entry in required:
-              assert entry in names, f"missing from package: {entry}"
-          assert any(n.startswith("code-refactor-prompts/references/") for n in names), "references missing"
-          assert not any("/.github/" in n for n in names), "package must not include .github"
-          print("package OK:", len(names), "entries")
-          PY
+      - name: Dry-run release packaging and extracted fast gates
+        run: python3 .github/scripts/package_skill.py --label ci --verify
 
   test-windows:
     name: Test tooling on Windows

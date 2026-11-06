@@ -74,12 +74,12 @@ class ValidatorTest(unittest.TestCase):
         root = self._copy_case("stale-test-count")
         readme = root / "README.md"
         text = readme.read_text(encoding="utf-8")
-        updated = re.sub(r"以\s*\d+\s*个用例", "以 99 个用例", text, count=1)
+        updated = re.sub(r"以\s*\d+\s*个用例", "以 999999 个用例", text, count=1)
         self.assertNotEqual(text, updated)
         readme.write_text(updated, encoding="utf-8")
         result = run_validator(root)
         self.assertNotEqual(result.returncode, 0, result.stdout)
-        self.assertIn("99", result.stdout)
+        self.assertIn("999999", result.stdout)
 
     def test_version_drift_is_rejected(self) -> None:
         root = self._copy_case("version-drift")
@@ -103,6 +103,16 @@ class ValidatorTest(unittest.TestCase):
         result = run_validator(root)
         self.assertNotEqual(result.returncode, 0, result.stdout)
         self.assertIn("pyproject.toml", result.stdout)
+
+    def test_pyproject_other_section_version_is_ignored(self) -> None:
+        root = self._copy_case("pyproject-other-version")
+        pyproject = root / "pyproject.toml"
+        text = pyproject.read_text(encoding="utf-8")
+        updated = '[tool.other]\nversion = "9.9.9"\n\n' + text
+        self.assertNotEqual(text, updated)
+        pyproject.write_text(updated, encoding="utf-8")
+        result = run_validator(root)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_hook_entry_drift_is_rejected(self) -> None:
         root = self._copy_case("hook-entry-drift")

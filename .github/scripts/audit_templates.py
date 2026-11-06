@@ -6,11 +6,12 @@ Two audit levels:
 1. Master templates (SKILL.md 默认模板, references/template-en.md) must pass the
    full shipped checker: eight segments, verifiable acceptance, language match,
    no anti-patterns.
-2. The 13 specialised variants in references/specialized-prompts.md are
-   fragments that intentionally inherit the master template. Each one must still
-   carry a verification anchor (验收 / 验证 / 测试 / 等价 / 回归); the guard-clause
-   variant instead must contain the NO_CODE_PROVIDED / NO_REFACTORING_NEEDED
-   markers. No variant may contain the checker's error-level anti-patterns.
+2. The specialised prompt fragments in references/specialized-prompts.md
+   intentionally inherit the master template; section 6 is a reference table.
+   Every other section must contain a prompt block carrying a verification
+   anchor (验收 / 验证 / 测试 / 等价 / 回归); the guard-clause variant instead
+   must contain both NO_CODE_PROVIDED and NO_REFACTORING_NEEDED markers.
+   No variant may contain the checker's error-level anti-patterns.
 
 Run with:  python3 .github/scripts/audit_templates.py
 """
@@ -37,7 +38,9 @@ MASTER_TEMPLATES = [
 VARIANT_HEADING = re.compile(r"^##\s+(\d+)\.\s+(.+?)\s*$", re.M)
 FENCE = re.compile(r"\x60\x60\x60[^\r\n]*\r?\n(.*?)\r?\n?\x60\x60\x60", re.S)
 VERIFICATION_ANCHOR = re.compile(r"验收|验证|测试|等价|回归", re.I)
-GUARD_MARKER = re.compile(r"NO_CODE_PROVIDED|NO_REFACTORING_NEEDED")
+# Section 6 is a language reference table, not a prompt fragment.
+REFERENCE_SECTIONS = {("6", "分语言定制要点")}
+GUARD_MARKERS = ("NO_CODE_PROVIDED", "NO_REFACTORING_NEEDED")
 
 
 def load_checker():
@@ -81,14 +84,18 @@ def audit_variants(checker) -> int:
     checked = 0
     for number, title, body in variant_sections(text):
         blocks = FENCE.findall(body)
-        if not blocks:
+        if not blocks and (number, title) in REFERENCE_SECTIONS:
             print(f"SKIP variant {number} ({title}): reference table, no prompt block")
             continue
-        prompt = "\n".join(blocks)
         checked += 1
+        if not blocks:
+            print(f"FAIL variant {number} ({title}): prompt block not found")
+            failures += 1
+            continue
+        prompt = "\n".join(blocks)
         problems: list[str] = []
         if "守卫" in title:
-            if not GUARD_MARKER.search(prompt):
+            if not all(marker in prompt for marker in GUARD_MARKERS):
                 problems.append("guard variant lacks NO_CODE_PROVIDED / NO_REFACTORING_NEEDED markers")
         elif not VERIFICATION_ANCHOR.search(prompt):
             problems.append("no verification anchor (验收 / 验证 / 测试 / 等价 / 回归)")
@@ -106,6 +113,9 @@ def audit_variants(checker) -> int:
 
 
 def main() -> int:
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     checker = load_checker()
     failures = audit_master_templates(checker)
     failures += audit_variants(checker)

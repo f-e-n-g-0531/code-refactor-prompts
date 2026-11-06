@@ -180,6 +180,28 @@ def fence_language(language: str) -> str:
     }.get(language, language)
 
 
+def _apply_tier_c_details(
+    lines: list[str], context: dict, *, pain_prefix: str,
+    rules_heading: str, cases_prefix: str, cases_heading: str,
+) -> str:
+    """Fill optional rules and cases without changing template matching order."""
+    if context["rules"]:
+        pain_index = next(
+            index for index, line in enumerate(lines) if line.startswith(pain_prefix)
+        )
+        lines[pain_index + 1 : pain_index + 1] = [rules_heading] + [
+            f"  - {rule}" for rule in context["rules"]
+        ]
+    if context["cases"]:
+        placeholder_index = next(
+            index for index, line in enumerate(lines) if line.startswith(cases_prefix)
+        )
+        lines[placeholder_index : placeholder_index + 1] = [cases_heading] + [
+            f"  - {case}" for case in context["cases"]
+        ]
+    return "\n".join(lines) + "\n"
+
+
 def build_zh(context: dict) -> str:
     fence = context["fence"]
     goals = context["goals"]
@@ -228,23 +250,13 @@ def build_zh(context: dict) -> str:
             "如有信息不足，先提问再动手。",
         ]
     )
-    if context["rules"]:
-        pain_index = next(
-            index for index, line in enumerate(lines) if line.startswith("- 这段代码做什么")
-        )
-        rules = ["- 业务规则（必须保持，逐条写进验收用例）："] + [
-            f"  - {rule}" for rule in context["rules"]
-        ]
-        lines[pain_index + 1 : pain_index + 1] = rules
-    if context["cases"]:
-        placeholder_index = next(
-            index for index, line in enumerate(lines) if line.startswith("- 用例：{")
-        )
-        lines[placeholder_index] = "- 用例："
-        lines[placeholder_index + 1 : placeholder_index + 1] = [
-            f"  - {case}" for case in context["cases"]
-        ]
-    return "\n".join(lines) + "\n"
+    return _apply_tier_c_details(
+        lines, context,
+        pain_prefix="- 这段代码做什么",
+        rules_heading="- 业务规则（必须保持，逐条写进验收用例）：",
+        cases_prefix="- 用例：{",
+        cases_heading="- 用例：",
+    )
 
 
 def build_en(context: dict) -> str:
@@ -294,25 +306,13 @@ def build_en(context: dict) -> str:
             "Ask clarifying questions before starting if information is missing.",
         ]
     )
-    if context["rules"]:
-        pain_index = next(
-            index
-            for index, line in enumerate(lines)
-            if line.startswith("- What this code does")
-        )
-        rules = ["- Business rules (must preserve, one acceptance case each):"] + [
-            f"  - {rule}" for rule in context["rules"]
-        ]
-        lines[pain_index + 1 : pain_index + 1] = rules
-    if context["cases"]:
-        placeholder_index = next(
-            index for index, line in enumerate(lines) if line.startswith("- Cases: {")
-        )
-        lines[placeholder_index] = "- Cases:"
-        lines[placeholder_index + 1 : placeholder_index + 1] = [
-            f"  - {case}" for case in context["cases"]
-        ]
-    return "\n".join(lines) + "\n"
+    return _apply_tier_c_details(
+        lines, context,
+        pain_prefix="- What this code does",
+        rules_heading="- Business rules (must preserve, one acceptance case each):",
+        cases_prefix="- Cases: {",
+        cases_heading="- Cases:",
+    )
 
 
 def main() -> int:

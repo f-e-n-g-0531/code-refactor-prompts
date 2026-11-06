@@ -270,6 +270,15 @@ def segment_body(text: str, heading: re.Pattern) -> str | None:
     return rest[: boundary.start()] if boundary else rest
 
 
+def _has_verifiable_checks(text: str) -> bool:
+    """Use the same test-command / expected-result heuristic at either scope."""
+    return bool(
+        TEST_COMMAND.search(text)
+        or VERIFIABLE_HINT.search(text)
+        or (text.count("→") + text.count("->")) >= 2
+    )
+
+
 def check_section_content(text: str, errors: list[dict], warnings: list[dict]) -> None:
     """The code section must contain code (or a placeholder), not just a heading."""
     code_body = segment_body(text, CODE_HEADING)
@@ -287,12 +296,7 @@ def check_section_content(text: str, errors: list[dict], warnings: list[dict]) -
 
     acceptance_body = segment_body(text, ACCEPTANCE_HEADING)
     if acceptance_body is not None:
-        local = bool(
-            TEST_COMMAND.search(acceptance_body)
-            or VERIFIABLE_HINT.search(acceptance_body)
-            or (acceptance_body.count("→") + acceptance_body.count("->")) >= 2
-        )
-        if not local:
+        if not _has_verifiable_checks(acceptance_body):
             warnings.append(
                 error(
                     "acceptance-section-unverifiable",
@@ -330,18 +334,23 @@ def check_language(text: str, languages: list[str], errors: list[dict], warnings
         )
 
 
+def _segment_matches(text: str):
+    """Yield canonical segments with their first match using identical search flags."""
+    for key, label, pattern in SEGMENTS:
+        yield key, label, re.search(pattern, text, re.S | re.M | re.I)
+
+
 def check(text: str, explicit_language: str = "auto", strict: bool = False) -> dict:
     errors: list[dict] = []
     warnings: list[dict] = []
 
     missing = [
-        label for _key, label, pattern in SEGMENTS if not re.search(pattern, text, re.S | re.M | re.I)
+        label for _key, label, match in _segment_matches(text) if not match
     ]
     for label in missing:
         errors.append(error("missing-segment", f"缺少段落：{label}"))
 
-    arrows = text.count("→") + text.count("->")
-    verifiable = bool(TEST_COMMAND.search(text) or VERIFIABLE_HINT.search(text) or arrows >= 2)
+    verifiable = _has_verifiable_checks(text)
     if not verifiable:
         errors.append(
             error("unverifiable-acceptance", "验收标准不可验证：未发现测试命令，也没有「输入 → 期望输出」用例")
@@ -436,8 +445,7 @@ def build_skeleton_blocks(text: str) -> list[str]:
 def segment_positions(text: str) -> dict[str, int]:
     """Line-start offsets of the segments already present (safe insertion points)."""
     positions: dict[str, int] = {}
-    for key, _label, pattern in SEGMENTS:
-        match = re.search(pattern, text, re.S | re.M | re.I)
+    for key, _label, match in _segment_matches(text):
         if match:
             positions[key] = text.rfind("\n", 0, match.start()) + 1
     return positions
@@ -507,8 +515,7 @@ def missing_segment_line(text: str, label: str) -> int:
         return 1
     index = labels.index(label)
     positions: list[int | None] = []
-    for _key, _segment_label, pattern in SEGMENTS:
-        match = re.search(pattern, text, re.S | re.M | re.I)
+    for _key, _segment_label, match in _segment_matches(text):
         positions.append(text[: match.start()].count("\n") + 1 if match else None)
     for later in positions[index + 1 :]:
         if later:
@@ -538,6 +545,17 @@ def finding_line(text: str, code: str, message: str = "") -> int | None:
                 match = pattern.search(text)
                 break
     return text[: match.start()].count("\n") + 1 if match else None
+
+
+def _print_github_findings(result: dict, text: str, path: str | None) -> None:
+    """Emit errors before warnings, identically for single and batch checks."""
+    for level, key in (("error", "errors"), ("warning", "warnings")):
+        for item in result[key]:
+            print(
+                github_annotation(
+                    level, path, item["message"], finding_line(text, item["code"], item["message"])
+                )
+            )
 
 
 def changed_prompt_files(base: str, include: str) -> list[str]:
@@ -640,21 +658,7 @@ def run_batch(
             failed += 1
         if not as_json:
             if github_output:
-                for item in result["errors"]:
-                    print(
-                        github_annotation(
-                            "error", str(file), item["message"], finding_line(text, item["code"], item["message"])
-                        )
-                    )
-                for warning in result["warnings"]:
-                    print(
-                        github_annotation(
-                            "warning",
-                            str(file),
-                            warning["message"],
-                            finding_line(text, warning["code"], warning["message"]),
-                        )
-                    )
+                _print_github_findings(result, text, str(file))
             else:
                 print(f"{'PASS' if result['pass'] else 'FAIL'} {file}")
                 if not result["pass"]:
@@ -828,18 +832,7 @@ def main() -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     elif args.format == "github":
         label = None if source == "-" else source
-        for item in result["errors"]:
-            print(
-                github_annotation(
-                    "error", label, item["message"], finding_line(text, item["code"], item["message"])
-                )
-            )
-        for item in result["warnings"]:
-            print(
-                github_annotation(
-                    "warning", label, item["message"], finding_line(text, item["code"], item["message"])
-                )
-            )
+        _print_github_findings(result, text, label)
         print(
             f"{len(result['errors'])} error(s), {len(result['warnings'])} warning(s) in "
             f"{'(stdin)' if source == '-' else source}"
