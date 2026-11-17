@@ -180,7 +180,8 @@ jobs:
 
   test-python39:
     name: Test tooling on Python 3.9
-    runs-on: ubuntu-latest
+    # Python 3.9 binaries are unavailable for Ubuntu 26.04 (ubuntu-latest).
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7
