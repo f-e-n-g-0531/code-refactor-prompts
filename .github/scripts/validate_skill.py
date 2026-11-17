@@ -50,6 +50,7 @@ REQUIRED_FILES = [
     "scripts/tests/test_compose_prompt.py",
     "scripts/tests/test_batch_and_hook.py",
     "scripts/tests/test_run_checks.py",
+    "scripts/tests/test_verify_examples.py",
     "scripts/tests/test_validate_skill.py",
     "scripts/fixtures/good-prompt.txt",
     "scripts/fixtures/good-go-prompt.txt",

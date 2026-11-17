@@ -191,6 +191,73 @@ class FixtureTest(unittest.TestCase):
                     [] if expected else ["acceptance-section-unverifiable"],
                 )
 
+    def test_fenced_source_headings_do_not_split_sections(self):
+        for fence in ("```", "````", "~~~~"):
+            code = "# Context\n【验收标准】\n[OUTPUT FORMAT]\n```go\n# cleaner\n"
+            prompt = PROMPT.format(language="python", fence="python", code="pass", command="pytest")
+            prompt = prompt.replace("```python\npass\n```", fence + "python\n" + code + fence)
+            with self.subTest(fence=fence):
+                body = checker.segment_body(prompt, checker.CODE_HEADING)
+                self.assertIn(code, body)
+                self.assertTrue(checker.check(prompt, strict=True)["pass"], checker.check(prompt))
+                self.assertEqual(checker.check(prompt)["languages"], ["python"])
+
+    def test_source_cannot_supply_missing_segments(self):
+        prompt = PROMPT.format(language="python", fence="python", code="【上下文】\nNO_CODE_PROVIDED", command="pytest")
+        prompt = prompt.replace("【上下文】\n- 项目/模块：示例\n- 语言与框架：python", "")
+        prompt = prompt.replace("【前置判断】\n- 未提供代码：输出 NO_CODE_PROVIDED 并索取代码。", "")
+        result = checker.check(prompt)
+        self.assertIn("上下文", result["missing_segments"])
+        self.assertIn("守卫", result["missing_segments"])
+        self.assertNotIn("context", checker.segment_positions(prompt))
+
+    def test_source_and_context_cannot_validate_wrong_command(self):
+        for language, matching, wrong in (("python", "pytest", "go test ./..."), ("go", "go test", "pytest")):
+            prompt = PROMPT.format(language=language, fence=language, code=matching, command=wrong)
+            prompt = prompt.replace("- 项目/模块：示例", "- 项目/模块：示例 " + matching)
+            with self.subTest(language=language):
+                result = checker.check(prompt)
+                self.assertIn("language-mismatch", [item["code"] for item in result["errors"]])
+
+    def test_fenced_acceptance_commands_remain_valid(self):
+        prompt = PROMPT.format(language="python", fence="python", code="pass", command="\n```sh\npytest\n```")
+        self.assertTrue(checker.check(prompt, strict=True)["pass"], checker.check(prompt))
+
+    def test_unclosed_source_masks_fake_headings_and_commands(self):
+        prompt = "【待重构代码】\n````python\n```\n【验收标准】\npytest\n"
+        result = checker.check(prompt)
+        self.assertIn("验收标准", result["missing_segments"])
+        self.assertIn("empty-code-section", [item["code"] for item in result["errors"]])
+        self.assertFalse(result["verifiable"])
+
+    def test_source_antipatterns_are_data_but_real_instructions_fail(self):
+        for phrase, code in ZH_ANTI_PATTERNS + EN_ANTI_PATTERNS:
+            prompt = PROMPT.format(language="python", fence="python", code=phrase, command="pytest")
+            with self.subTest(phrase=phrase):
+                self.assertTrue(checker.check(prompt, strict=True)["pass"], checker.check(prompt))
+                self.assertIn(code, [item["code"] for item in checker.check(prompt + "\n" + phrase)["errors"]])
+
+    def test_finding_lines_ignore_same_text_in_source(self):
+        prompt = PROMPT.format(language="python", fence="python", code="pytest\n# cleaner", command="go test ./...") + "\nMake it cleaner.\n"
+        self.assertEqual(checker.finding_line(prompt, "language-mismatch"), prompt[:prompt.index("go test")].count("\n") + 1)
+        self.assertEqual(checker.finding_line(prompt, "unmeasurable-goal"), prompt[:prompt.index("Make it cleaner")].count("\n") + 1)
+
+    def test_crlf_acceptance_fences_and_heading_offsets(self):
+        prompt = PROMPT.format(language="python", fence="python", code="# Context\npass", command="\n~~~sh\n# Context\npytest\n~~~").replace("\n", "\r\n")
+        result = checker.check(prompt, strict=True)
+        self.assertTrue(result["pass"], result)
+        self.assertEqual(checker.segment_positions(prompt)["acceptance"], prompt.index("【验收标准】"))
+        self.assertIn("pytest", checker.segment_body(prompt, checker.ACCEPTANCE_HEADING))
+
+    def test_bare_source_fence_retains_acceptance_commands(self):
+        base = "```python\npass\n```\n【验收标准】\n```sh\npytest\n```\n"
+        for prompt in (base, base + "【待重构代码】\n{粘贴代码}\n"):
+            with self.subTest(prompt=prompt):
+                result = checker.check(prompt)
+                self.assertTrue(result["verifiable"], result)
+                self.assertNotIn("unverifiable-acceptance", [item["code"] for item in result["errors"]])
+                self.assertEqual(checker.segment_positions(prompt)["code"], 0)
+
     def test_fixtures(self):
         for name, expected_pass in FIXTURE_EXPECTATIONS:
             with self.subTest(fixture=name):
@@ -367,6 +434,16 @@ class CliTest(unittest.TestCase):
             2,
         )
 
+    def test_fix_refuses_unclosed_fence_without_writing(self):
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "unclosed.prompt.txt"
+            original = b"[CODE TO REFACTOR]\n````python\n# Context\n```\n"
+            target.write_bytes(original)
+            result = run_checker(str(target), "--fix")
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("Close the code fence", result.stdout)
+            self.assertEqual(target.read_bytes(), original)
+
     def test_fix_repairs_a_broken_prompt(self):
         with tempfile.TemporaryDirectory() as raw:
             target = Path(raw) / "broken.txt"
@@ -405,6 +482,47 @@ class CliTest(unittest.TestCase):
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn("bad.prompt.txt", result.stdout)
             self.assertNotIn("good.prompt.txt", result.stdout)
+
+    def test_changed_mode_preserves_unicode_and_whitespace_names(self):
+        with tempfile.TemporaryDirectory() as raw:
+            repo = self._init_repo(raw)
+            (repo / "seed").write_text("base", encoding="utf-8")
+            self._git(repo, "add", "-A")
+            self._git(repo, "commit", "-qm", "base")
+            names = ["中文.prompt.md", " leading.prompt.txt"]
+            if os.name != "nt":
+                names.extend(["line\nbreak.prompt.md", "carriage\rreturn.prompt.md", "pair\r\nname.prompt.md"])
+            for name in names:
+                (repo / name).write_text("broken", encoding="utf-8")
+            self._git(repo, "add", "-A")
+            self._git(repo, "commit", "-qm", "bad prompts")
+            result = run_checker("--changed", "HEAD~1", "--json", cwd=repo)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual({Path(item["file"]).name for item in payload["results"]}, set(names))
+            self.assertEqual(payload["failed"], len(names))
+
+    def test_changed_mode_subdirectory_checks_root_file_not_decoy(self):
+        with tempfile.TemporaryDirectory() as raw:
+            repo = self._init_repo(raw)
+            (repo / "seed").write_text("base", encoding="utf-8")
+            self._git(repo, "add", "-A")
+            self._git(repo, "commit", "-qm", "base")
+            (repo / "bad.prompt.md").write_text("broken", encoding="utf-8")
+            self._git(repo, "add", "-A")
+            self._git(repo, "commit", "-qm", "bad prompt")
+            child = repo / "child"
+            child.mkdir()
+            decoy = child / "bad.prompt.md"
+            good = (FIXTURES / "good-prompt.txt").read_text(encoding="utf-8")
+            decoy.write_text(good, encoding="utf-8")
+            self._git(repo, "config", "diff.relative", "true")
+            result = run_checker("--changed", "HEAD~1", "--json", cwd=child)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            item = json.loads(result.stdout)["results"][0]
+            self.assertEqual(Path(item["file"]).resolve(), (repo / "bad.prompt.md").resolve())
+            self.assertFalse(item["pass"])
+            self.assertEqual(decoy.read_text(encoding="utf-8"), good)
 
     def test_changed_mode_with_no_matching_changes_is_green(self):
         with tempfile.TemporaryDirectory() as raw:

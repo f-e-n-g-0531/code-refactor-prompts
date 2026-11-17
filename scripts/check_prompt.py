@@ -41,6 +41,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import os
 import re
 import subprocess
 import sys
@@ -84,8 +85,7 @@ ACCEPTANCE_HEADING = re.compile(
     r"【验收标准[^】]*】|\[ACCEPTANCE[^\]]*\]|^#{1,4}\s*(?:acceptance criteria|验收标准)",
     re.I | re.M,
 )
-SEGMENT_BOUNDARY = re.compile(r"\n(?=\s*(?:【[^】\n]+】|\[[A-Z][^\]\n]*\]|#{1,4}\s))")
-FENCED_BLOCK = re.compile(r"```[^\n]*\n(.*?)```", re.S)
+SEGMENT_BOUNDARY = re.compile(r"\n(?=[ \t]*(?:【[^】\n]+】|\[[A-Z][^\]\n]*\]|#{1,4}\s))")
 CODE_PLACEHOLDER = re.compile(r"\{[^}\n]{0,100}(?:代码|code|粘贴|paste)[^}\n]{0,100}\}", re.I)
 
 # Fence language -> canonical language.
@@ -245,9 +245,49 @@ def error(code: str, message: str) -> dict:
     return {"code": code, "message": message}
 
 
+def fenced_blocks(text: str):
+    """Yield (start, end, content_start, content_end, info, closed) fence spans.
+
+    Match line fences, including longer backticks and tildes. Unclosed blocks
+    mask through EOF but never count as a complete code block.
+    """
+    opening = None
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        if opening is None:
+            match = re.match(r"^[ \t]{0,3}(`{3,}|~{3,})([^\r\n]*)", line)
+            if match and not (match.group(1)[0] == "`" and "`" in match.group(2)):
+                opening = (offset, offset + len(line), match.group(1), match.group(2).strip())
+        else:
+            start, body_start, fence, info = opening
+            if re.fullmatch(r"[ \t]{0,3}" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}[ \t]*(?:\r?\n)?", line):
+                yield start, offset + len(line), body_start, offset, info, True
+                opening = None
+        offset += len(line)
+    if opening is not None:
+        start, body_start, _fence, info = opening
+        yield start, len(text), body_start, len(text), info, False
+
+
+def _blank(text: str) -> str:
+    return re.sub(r"[^\r\n]", " ", text)
+
+
+def _heading_text(text: str) -> str:
+    """Hide fenced data without changing offsets used by fixes/annotations."""
+    pieces = []
+    end = 0
+    for start, stop, _body_start, _body_end, _info, _closed in fenced_blocks(text):
+        pieces.extend((text[end:start], _blank(text[start:stop])))
+        end = stop
+    pieces.append(text[end:])
+    return "".join(pieces)
+
+
 def detect_languages(text: str) -> list[str]:
     languages: list[str] = []
-    for fence in re.findall(r"\x60\x60\x60([A-Za-z0-9#+_.-]+)", text):
+    for _start, _end, _body_start, _body_end, info, _closed in fenced_blocks(text):
+        fence = info.split()[0] if info else ""
         language = LANGUAGE_FENCES.get(fence.lower())
         if language and language not in languages:
             languages.append(language)
@@ -262,12 +302,28 @@ def looks_english(text: str) -> bool:
 
 def segment_body(text: str, heading: re.Pattern) -> str | None:
     """Return the text after a segment heading, up to the next segment heading."""
-    match = heading.search(text)
+    visible = _heading_text(text)
+    match = heading.search(visible)
     if not match:
         return None
-    rest = text[match.end() :]
-    boundary = SEGMENT_BOUNDARY.search(rest)
-    return rest[: boundary.start()] if boundary else rest
+    boundary = SEGMENT_BOUNDARY.search(visible, match.end())
+    return text[match.end():boundary.start() if boundary else len(text)]
+
+
+def _instruction_text(text: str) -> str:
+    """Exclude source data, retaining acceptance command fences and offsets."""
+    body = segment_body(text, CODE_HEADING)
+    if body is None:
+        acceptance = segment_body(text, ACCEPTANCE_HEADING)
+        heading = ACCEPTANCE_HEADING.search(_heading_text(text))
+        visible = _heading_text(text)
+        if acceptance is not None and heading is not None:
+            start = heading.end()
+            visible = visible[:start] + text[start:start + len(acceptance)] + visible[start + len(acceptance):]
+        return visible
+    match = CODE_HEADING.search(_heading_text(text))
+    start = match.end()
+    return text[:start] + _blank(body) + text[start + len(body):]
 
 
 def _has_verifiable_checks(text: str) -> bool:
@@ -283,7 +339,7 @@ def check_section_content(text: str, errors: list[dict], warnings: list[dict]) -
     """The code section must contain code (or a placeholder), not just a heading."""
     code_body = segment_body(text, CODE_HEADING)
     if code_body is not None:
-        has_code = bool(FENCED_BLOCK.search(code_body))
+        has_code = any(closed for *_rest, closed in fenced_blocks(code_body))
         has_placeholder = bool(CODE_PLACEHOLDER.search(code_body))
         if not has_code and not has_placeholder:
             errors.append(
@@ -309,6 +365,7 @@ def check_section_content(text: str, errors: list[dict], warnings: list[dict]) -
 def check_language(text: str, languages: list[str], errors: list[dict], warnings: list[dict]) -> None:
     if not languages:
         return
+    text = segment_body(text, ACCEPTANCE_HEADING) or ""
     labels = " / ".join(LANGUAGE_LABELS[lang] for lang in languages)
     matched = [lang for lang in languages if re.search(LANGUAGE_TEST_COMMANDS[lang], text, re.I)]
     if matched:
@@ -336,8 +393,16 @@ def check_language(text: str, languages: list[str], errors: list[dict], warnings
 
 def _segment_matches(text: str):
     """Yield canonical segments with their first match using identical search flags."""
+    visible = _heading_text(text)
     for key, label, pattern in SEGMENTS:
-        yield key, label, re.search(pattern, text, re.S | re.M | re.I)
+        match = re.search(pattern, visible, re.S | re.M | re.I)
+        if key == "code":
+            first = next(fenced_blocks(text), None)
+            if first is not None:
+                opener = re.compile(r"`{3,}|~{3,}").search(text, first[0])
+                if match is None or opener.start() < match.start():
+                    match = opener
+        yield key, label, match
 
 
 def check(text: str, explicit_language: str = "auto", strict: bool = False) -> dict:
@@ -350,23 +415,24 @@ def check(text: str, explicit_language: str = "auto", strict: bool = False) -> d
     for label in missing:
         errors.append(error("missing-segment", f"缺少段落：{label}"))
 
-    verifiable = _has_verifiable_checks(text)
+    instructions = _instruction_text(text)
+    verifiable = _has_verifiable_checks(instructions)
     if not verifiable:
         errors.append(
             error("unverifiable-acceptance", "验收标准不可验证：未发现测试命令，也没有「输入 → 期望输出」用例")
         )
 
-    if VAGUE.search(text) and not verifiable:
+    if VAGUE.search(instructions) and not verifiable:
         errors.append(
             error("vague-equivalence", "出现「保持行为不变」但没有可验证的测试命令或用例，无法验收")
         )
 
-    if not BEHAVIOUR_CONSTRAINT.search(text):
+    if not BEHAVIOUR_CONSTRAINT.search(instructions):
         warnings.append(
             error("no-behaviour-constraint", "硬约束未显式约束行为 / API / 签名 / 异常兼容性")
         )
 
-    if not re.search(r"diff|完整文件|patch", text, re.I):
+    if not re.search(r"diff|完整文件|patch", instructions, re.I):
         warnings.append(
             error("no-output-format", "输出格式未约定 unified diff / 完整文件 / patch")
         )
@@ -374,7 +440,7 @@ def check(text: str, explicit_language: str = "auto", strict: bool = False) -> d
     check_section_content(text, errors, warnings)
 
     if explicit_language == "auto":
-        languages = detect_languages(text)
+        languages = detect_languages(segment_body(text, CODE_HEADING) or text)
         language_source = "auto"
     else:
         languages = [explicit_language]
@@ -382,7 +448,7 @@ def check(text: str, explicit_language: str = "auto", strict: bool = False) -> d
     check_language(text, languages, errors, warnings)
 
     for code, pattern, severity, message in ANTI_PATTERNS:
-        if pattern.search(text):
+        if pattern.search(instructions):
             target = errors if severity == "error" else warnings
             target.append(error(code, message))
 
@@ -460,7 +526,12 @@ def apply_fix_to_file(path: Path, language: str, strict: bool) -> dict:
     result = check(text, explicit_language=language, strict=strict)
     keys = [item["segment"] for item in result["skeleton"]]
     if keys:
-        english = looks_english(text)
+        if any(not closed for *_rest, closed in fenced_blocks(text)):
+            result["errors"].append(error("unclosed-code-fence",
+                "代码围栏未闭合：请先手工闭合，再使用 --fix。 Close the code fence before --fix."))
+            result["pass"] = False
+            return result
+        english = looks_english(_instruction_text(text))
         table = SKELETONS_EN if english else SKELETONS_ZH
         note = (
             "<!-- check_prompt.py --fix: missing-segment skeletons inserted at their canonical positions; fill them in -->"
@@ -532,17 +603,24 @@ def finding_line(text: str, code: str, message: str = "") -> int | None:
     if code == "missing-segment":
         match = re.search(r"缺少段落：(.+)$", message)
         return missing_segment_line(text, match.group(1)) if match else 1
+    visible = _heading_text(text)
+    instructions = _instruction_text(text)
     if code == "empty-code-section":
-        match = CODE_HEADING.search(text)
+        match = CODE_HEADING.search(visible)
     elif code == "acceptance-section-unverifiable":
-        match = ACCEPTANCE_HEADING.search(text)
+        match = ACCEPTANCE_HEADING.search(visible)
     elif code == "language-mismatch":
-        match = TEST_COMMAND.search(text)
+        heading = ACCEPTANCE_HEADING.search(visible)
+        body = segment_body(text, ACCEPTANCE_HEADING)
+        if heading and body is not None:
+            match = TEST_COMMAND.search(body)
+            return text[:heading.end() + match.start()].count("\n") + 1 if match else None
+        match = None
     else:
         match = None
         for name, pattern, _severity, _message in ANTI_PATTERNS:
             if name == code:
-                match = pattern.search(text)
+                match = pattern.search(instructions)
                 break
     return text[: match.start()].count("\n") + 1 if match else None
 
@@ -561,18 +639,22 @@ def _print_github_findings(result: dict, text: str, path: str | None) -> None:
 def changed_prompt_files(base: str, include: str) -> list[str]:
     """Return prompt files changed since base (git diff base...HEAD), filtered by include."""
     patterns = [item.strip() for item in include.split(",") if item.strip()]
+    root_result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], capture_output=True,
+    )
+    if root_result.returncode != 0:
+        raise RuntimeError(os.fsdecode(root_result.stderr).strip() or "cannot determine repository root")
+    root = Path(os.fsdecode(root_result.stdout.removesuffix(b"\n")))
     result = subprocess.run(
-        ["git", "diff", "--name-only", "--diff-filter=ACMR", f"{base}...HEAD"],
+        ["git", "-C", str(root), "diff", "--no-relative", "--name-only", "-z", "--diff-filter=ACMR", f"{base}...HEAD", "--"],
         capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
     )
     if result.returncode != 0:
-        detail = result.stderr.strip() or f"git diff exited with {result.returncode}"
+        detail = os.fsdecode(result.stderr).strip() or f"git diff exited with {result.returncode}"
         raise RuntimeError(detail)
-    files = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    return [name for name in files if any(fnmatch.fnmatch(name, pattern) for pattern in patterns)]
+    files = [os.fsdecode(name) for name in result.stdout.split(b"\0") if name]
+    return [str(root / name) for name in files
+            if any(fnmatch.fnmatch(name, pattern) for pattern in patterns)]
 
 
 def collect_sources(sources: list[str], include: str) -> tuple[list[Path], list[str]]:

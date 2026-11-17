@@ -29,7 +29,7 @@ python3 scripts/run_checks.py --full   # 额外真实执行 examples/ 里的全�
 
 - **新增夹具**：放进 `scripts/fixtures/`，命名为 `good-*` / `bad-*`，并在 `validate_skill.py` 的必需文件与 CI 自测中登记。
 - **新增专项变体**：编辑 `references/specialized-prompts.md`，保持 `## N. 标题` 编号与验收锚点；`audit_templates.py` 会自动审计。
-- **新增可执行样例**：在 `examples/*.md` 中加入 `verify:run` 与 `verify:file` 标记，确保本机 `--full` 通过；CI 会用 `verify_examples.py --require-all` 实跑。
+- **新增可执行样例**：在 `examples/*.md` 中加入独立成行的 `verify:run` 与 `verify:file` 标记。每个样例只允许一个多行执行块；文件目标使用 `/` 分隔的规范相对路径，不得重复、大小写冲突或与目录冲突，也不能使用 Windows 保留名。损坏标记会失败；完全无标记的说明样例才跳过。确保本机 `--full` 通过；CI 会用 `verify_examples.py --require-all` 实跑，零成功执行也失败。
 - **修改检查器**：同步更新 `scripts/tests/` 下的回归测试与 README 中的用例数声明。
 
 ## 版本与发布（校验脚本会强制）

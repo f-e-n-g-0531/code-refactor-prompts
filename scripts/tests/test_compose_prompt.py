@@ -100,6 +100,23 @@ class ComposeTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(checker.check(result.stdout, explicit_language="python")["pass"])
 
+    def test_source_headings_and_embedded_fences_survive_composition(self):
+        code = '# Context\ntext = """\n[ACCEPTANCE CRITERIA]\n```go\n# cleaner\n"""\ndef total():\n    return 0\n'
+        for output_lang in ("zh", "en"):
+            with self.subTest(output_lang=output_lang):
+                result = run_compose("--code", "-", "--code-lang", "python", "--output-lang", output_lang, input_text=code)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(code.rstrip(), result.stdout)
+                self.assertTrue(checker.check(result.stdout, strict=True)["pass"], checker.check(result.stdout))
+
+    def test_source_test_tool_names_cannot_hide_wrong_acceptance(self):
+        for code in ('x = "pytest"\n', "# pytest\nx = 0\n"):
+            for output_lang in ("zh", "en"):
+                with self.subTest(code=code, output_lang=output_lang):
+                    result = run_compose("--code", "-", "--code-lang", "python", "--output-lang", output_lang, "--test-command", "go test ./...", input_text=code)
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    self.assertEqual(result.stdout, "")
+
     def test_mismatched_test_command_is_refused(self):
         result = run_compose("--code", str(SAMPLE_GO), "--test-command", "pytest")
         self.assertEqual(result.returncode, 1)

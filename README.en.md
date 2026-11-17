@@ -70,7 +70,7 @@ code-refactor-prompts/
 - **End-to-end workflows**: review-first, legacy baseline, multi-file batching, iterative repair.
 - **Batch checks and commit gating**: `check_prompt.py` accepts multiple files and directories (per-file PASS/FAIL plus a summary); `.pre-commit-hooks.yaml` lets pre-commit and CI gate on it directly.
 - **PR gate (GitHub Actions)**: the root `action.yml` checks prompts in a pull request and annotates findings on the matching files via `--format github`; with `changed-only: true` it checks only the prompt files changed in that PR.
-- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 119 tests, run on every CI build.
+- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 151 tests, run on every CI build.
 - **One-command local gate**: `scripts/run_checks.py` runs structure validation, template audit, tooling tests and the offline source-link check; `--full` also executes every runnable example (needs Go / Rust / Node / .NET / JDK / Python), `--list` prints the steps.
 - **Delivery checklist**: `references/checklists.md` walks from prompt authoring to merge.
 - **One-command composition**: `scripts/compose_prompt.py --code <file>` builds a filled eight-segment prompt (Chinese or English, auto-detects 13 languages and their test commands); supplying both `--rule` (business rules) and `--case` (acceptance cases) produces a full tier-C prompt (`--require-c-tier` refuses to emit unless both are supplied), and the result is refused unless it passes the shipped checker.
@@ -153,7 +153,7 @@ Then in `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.20.0
+    rev: v1.20.1
     hooks:
       - id: code-refactor-prompt-check
 ```
@@ -174,7 +174,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0        # changed-only needs the full history
-      - uses: f-e-n-g-0531/code-refactor-prompts@v1.20.0
+      - uses: f-e-n-g-0531/code-refactor-prompts@v1.20.1
         with:
           changed-only: true     # only prompts changed in this PR; otherwise files is used (repo root by default)
           strict: true           # warnings fail too

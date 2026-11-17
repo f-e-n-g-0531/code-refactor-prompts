@@ -39,7 +39,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = ROOT / "examples"
@@ -92,9 +92,16 @@ def remove_tree_with_retry(directory: Path, attempts: int = 6, delay: float = 0.
 
 def parse_example(path: Path) -> tuple[list[tuple[str, str]], list[str]]:
     text = path.read_text(encoding="utf-8")
-    run_match = RUN_RE.search(text)
-    if not run_match:
+    markers = list(re.finditer(r"(?m)^[ \t]*<!--\s*verify:", text))
+    if not markers:
         return [], []
+    runs = list(RUN_RE.finditer(text))
+    file_blocks = list(FILE_RE.finditer(text))
+    # A declared but malformed marker must never become an illustration-only skip.
+    parsed_starts = {match.start() for match in runs + file_blocks}
+    if len(runs) != 1 or any(text.index("<!--", marker.start()) not in parsed_starts for marker in markers):
+        raise ExampleError("expected one valid verify:run block and valid verify:file blocks")
+    run_match = runs[0]
 
     commands = [
         line.strip()
@@ -102,11 +109,23 @@ def parse_example(path: Path) -> tuple[list[tuple[str, str]], list[str]]:
         if line.strip() and not line.strip().startswith("#")
     ]
     files: list[tuple[str, str]] = []
-    for match in FILE_RE.finditer(text):
+    targets: set[tuple[str, ...]] = set()
+    for match in file_blocks:
         name = match.group(1)
-        target = Path(name)
-        if target.is_absolute() or ".." in target.parts:
+        parts = name.split("/")
+        windows = PureWindowsPath(name)
+        # Markers use portable, canonical POSIX-relative names on every host.
+        if (windows.drive or windows.root or "\\" in name
+                or any(part in {"", ".", ".."} or part.endswith((".", " "))
+                       or re.search(r'[<>:"|?*\x00-\x1f]', part)
+                       or re.fullmatch(r"(?i:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³])",
+                                       part.split(".", 1)[0].rstrip(" ")) for part in parts)):
             raise ExampleError(f"unsafe verify:file target: {name!r}")
+        key = tuple(part.casefold() for part in parts)
+        if any(key == other or key[:len(other)] == other or other[:len(key)] == key
+               for other in targets):
+            raise ExampleError(f"duplicate or conflicting verify:file target: {name!r}")
+        targets.add(key)
         files.append((name, match.group(2)))
     if not files:
         raise ExampleError("verify:run declared but no verify:file blocks found")
@@ -270,6 +289,9 @@ def main() -> int:
             else:
                 print(f"SKIP {message}")
 
+    if args.require_all and verified == 0:
+        print("FAIL no executable examples were successfully executed")
+        failed += 1
     print(f"\n{verified} example(s) executed green, {failed} failure(s).")
     return 1 if failed else 0
 

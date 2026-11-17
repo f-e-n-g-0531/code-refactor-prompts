@@ -2,6 +2,11 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
+import io
+import stat
+import tarfile
+import warnings
 import os
 from pathlib import Path
 import tempfile
@@ -70,6 +75,63 @@ class PackageSkillTest(unittest.TestCase):
     @unittest.skipIf(os.environ.get("PACKAGE_GATE_CHILD") == "1", "avoid recursively packaging the package gate")
     def test_real_extracted_archives_run_fast_gate(self):
         package.verify(package.build(ROOT, self.output, "integration"), ROOT)
+
+    def refresh_checksums(self, archives):
+        (self.output / "SHA256SUMS.txt").write_text("".join(
+            hashlib.sha256(path.read_bytes()).hexdigest() + "  " + path.name + "\n"
+            for path in archives), encoding="utf-8")
+
+    def test_duplicate_zip_member_rejected_before_execution(self):
+        archives = package.build(ROOT, self.output, "duplicate")
+        name = package.PREFIX + "/README.md"
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            with zipfile.ZipFile(archives[0], "a") as archive:
+                archive.writestr(name, (ROOT / "README.md").read_bytes())
+        self.refresh_checksums(archives)
+        with patch.object(package.subprocess, "run") as run, self.assertRaisesRegex(ValueError, "duplicate archive entry"):
+            package.verify(archives, ROOT)
+        run.assert_not_called()
+
+    def test_duplicate_tar_member_rejected_before_any_execution(self):
+        archives = package.build(ROOT, self.output, "duplicate")
+        files = package.package_files(ROOT)
+        with tarfile.open(archives[1], "w:gz") as archive:
+            for name, data in list(files.items()) + [("README.md", files["README.md"])]:
+                member = tarfile.TarInfo(package.PREFIX + "/" + name)
+                member.size = len(data)
+                archive.addfile(member, io.BytesIO(data))
+        self.refresh_checksums(archives)
+        with patch.object(package.subprocess, "run") as run, self.assertRaisesRegex(ValueError, "duplicate archive entry"):
+            package.verify(archives, ROOT)
+        run.assert_not_called()
+
+    def test_zip_symlink_metadata_rejected(self):
+        archives = package.build(ROOT, self.output, "symlink")
+        files = package.package_files(ROOT)
+        with zipfile.ZipFile(archives[0], "w") as archive:
+            for name, data in files.items():
+                member = zipfile.ZipInfo(package.PREFIX + "/" + name)
+                member.create_system = 3
+                member.external_attr = ((stat.S_IFLNK if name == "README.md" else stat.S_IFREG) | 0o644) << 16
+                archive.writestr(member, data)
+        self.refresh_checksums(archives)
+        with patch.object(package.subprocess, "run") as run, self.assertRaisesRegex(ValueError, "unexpected archive entry"):
+            package.verify(archives, ROOT)
+        run.assert_not_called()
+
+    def test_second_archive_checksum_failure_prevents_first_gate(self):
+        archives = package.build(ROOT, self.output, "checksum")
+        checksum = self.output / "SHA256SUMS.txt"
+        checksum.write_text(checksum.read_text(encoding="utf-8").splitlines()[0] + "\n", encoding="utf-8")
+        with patch.object(package.subprocess, "run") as run, self.assertRaisesRegex(ValueError, "checksum mismatch"):
+            package.verify(archives, ROOT)
+        run.assert_not_called()
+
+    def test_empty_archive_set_does_not_claim_success(self):
+        with patch.object(package.subprocess, "run") as run, self.assertRaisesRegex(ValueError, "no release archives"):
+            package.verify([], ROOT)
+        run.assert_not_called()
 
     def test_missing_dependency_is_rejected(self):
         files = package.package_files(ROOT)

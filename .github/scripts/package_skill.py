@@ -7,6 +7,7 @@ import hashlib
 import io
 import os
 import re
+import stat
 from pathlib import Path
 import subprocess
 import sys
@@ -68,14 +69,27 @@ def build(root: Path, output: Path, label: str) -> list[Path]:
 
 def verify(archives: list[Path], root: Path) -> None:
     expected = {f"{PREFIX}/{name}": data for name, data in package_files(root).items()}
+    if not archives:
+        raise ValueError("no release archives supplied")
+    validated: list[dict[str, bytes]] = []
     for path in archives:
         if path.suffix == ".zip":
             with zipfile.ZipFile(path) as archive:
-                actual = {name: archive.read(name) for name in archive.namelist()}
+                actual = {}
+                for member in archive.infolist():
+                    if member.filename in actual:
+                        raise ValueError(f"duplicate archive entry: {member.filename}")
+                    mode = member.external_attr >> 16
+                    kind = stat.S_IFMT(mode)
+                    if member.is_dir() or kind not in {0, stat.S_IFREG}:
+                        raise ValueError(f"unexpected archive entry: {member.filename}")
+                    actual[member.filename] = archive.read(member)
         else:
             with tarfile.open(path) as archive:
                 actual = {}
                 for member in archive.getmembers():
+                    if member.name in actual:
+                        raise ValueError(f"duplicate archive entry: {member.name}")
                     if not member.isfile():
                         raise ValueError(f"unexpected archive entry: {member.name}")
                     actual[member.name] = archive.extractfile(member).read()
@@ -84,6 +98,9 @@ def verify(archives: list[Path], root: Path) -> None:
         checksum = f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}"
         if checksum not in (path.parent / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines():
             raise ValueError(f"checksum mismatch: {path}")
+        validated.append(actual)
+    # Preflight the entire artifact set before executing code from any member.
+    for actual in validated:
         with tempfile.TemporaryDirectory() as temporary:
             destination = Path(temporary)
             # Names have been compared to our trusted allowlist before extraction.
