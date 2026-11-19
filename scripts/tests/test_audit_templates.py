@@ -24,7 +24,7 @@ class AuditTemplatesTest(unittest.TestCase):
     def setUpClass(cls):
         cls.checker = audit.load_checker()
         cls.text = audit.VARIANTS.read_text(encoding="utf-8")
-        cls.sections = list(audit.variant_sections(cls.text))
+        cls.sections = list(audit.variant_sections(cls.text, cls.checker))
 
     def run_variants(self, text):
         with tempfile.TemporaryDirectory() as directory:
@@ -48,6 +48,26 @@ class AuditTemplatesTest(unittest.TestCase):
         self.assertEqual(output.getvalue().count("passes the full prompt checker"), 2)
         self.assertIn("12 specialised variant(s) audited, 0 failure(s).", output.getvalue())
 
+    def test_master_fence_preserves_nested_source(self):
+        label = "Master template"
+        body = (ROOT / "references/template-en.md").read_text(encoding="utf-8")
+        start = body.index("```text")
+        end = body.index("```", start + 7)
+        prompt = body[start + 7:end].strip().replace(
+            "{paste the code in a fenced block, keeping its original formatting}",
+            "```python\npass\n```",
+        )
+        self.assertTrue(self.checker.check(prompt)["pass"])
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            master = root / "master.md"
+            master.write_text("## Master template\n~~~~text\n" + prompt + "\n~~~~\n", encoding="utf-8")
+            with patch.object(audit, "ROOT", root), patch.object(
+                audit, "MASTER_TEMPLATES", [(master.name, r"^## Master template", label)],
+            ), contextlib.redirect_stdout(output):
+                self.assertEqual(audit.audit_master_templates(self.checker), 0, output.getvalue())
+
     def test_real_reference_table_is_the_only_skip(self):
         self.assertEqual([n for n, _, _ in self.sections], [str(n) for n in range(1, 14)])
         failures, output = self.run_variants(self.text)
@@ -55,20 +75,28 @@ class AuditTemplatesTest(unittest.TestCase):
         self.assertEqual(output.count("SKIP variant"), 1)
         self.assertIn("SKIP variant 6 (分语言定制要点): reference table, no prompt block", output)
 
+    def test_headings_inside_long_and_tilde_fences_are_literal(self):
+        for fence in ("````", "~~~"):
+            with self.subTest(fence=fence):
+                text = f"## 1. Real\n{fence}text\n验收：基线通过\n## 2. Literal\n{fence}\n"
+                failures, output = self.run_variants(text)
+                self.assertEqual(failures, 0, output)
+                self.assertIn("1 specialised variant(s) audited", output)
+
     def test_each_prompt_requires_fences(self):
         for number, title, body in self.sections:
             if number == "6":
                 continue
             for mutation, replacement in (
-                ("deleted block", audit.FENCE.sub("", body)),
+                ("deleted block", "\n"),
                 ("unfenced content", body.replace("```text", "").replace("```", "")),
                 ("missing closing fence", body.rsplit("```", 1)[0]),
             ):
                 with self.subTest(number=number, mutation=mutation):
                     failures, output = self.run_variants(self.replace_body(number, replacement))
                     self.assertEqual(failures, 1, output)
-                    self.assertIn(f"FAIL variant {number} ({title}): prompt block not found", output)
-                    self.assertIn("12 specialised variant(s) audited, 1 failure(s).", output)
+                    detail = "unclosed prompt fence" if mutation == "missing closing fence" else "prompt block not found"
+                    self.assertIn(f"FAIL variant {number} ({title}): {detail}", output)
 
     def test_reference_exemption_requires_number_and_title(self):
         for heading in ("## 6. 普通变体", "## 14. 分语言定制要点"):
@@ -106,6 +134,17 @@ class AuditTemplatesTest(unittest.TestCase):
         self.assertEqual(failures, 1, output)
         self.assertIn("no verification anchor", output)
 
+    def test_nested_code_does_not_count_as_variant_instruction(self):
+        for payload, expected in (("验收：通过", "no verification anchor"),
+                                  ("rewrite the whole project", None)):
+            with self.subTest(payload=payload):
+                intro = "只给建议" if expected else "验收：运行基线测试"
+                text = "## 1. Sample\n~~~~text\n" + intro + "\n" + chr(96) * 3 + "text\n" + payload + "\n" + chr(96) * 3 + "\n~~~~\n"
+                failures, output = self.run_variants(text)
+                self.assertEqual(failures, int(expected is not None), output)
+                if expected:
+                    self.assertIn(expected, output)
+
     def test_error_anti_pattern_still_fails(self):
         text = self.replace_body("1", "\n```text\n测试；rewrite the whole project\n```\n")
         failures, output = self.run_variants(text)
@@ -117,6 +156,24 @@ class AuditTemplatesTest(unittest.TestCase):
         failures, output = self.run_variants(text)
         self.assertEqual(failures, 0, output)
         self.assertIn("PASS variant 1", output)
+
+    def test_empty_or_unnumbered_variant_document_fails(self):
+        for text in ("", "# Specialised prompts\n\nOnly introductory prose.\n"):
+            with self.subTest(text=text):
+                failures, output = self.run_variants(text)
+                self.assertEqual(failures, 1, output)
+                self.assertIn("no numbered variant headings", output)
+
+    def test_reference_table_alone_is_not_an_audit(self):
+        failures, output = self.run_variants("## 6. 分语言定制要点\n\nLanguage reference.\n")
+        self.assertEqual(failures, 1, output)
+        self.assertIn("no prompt variants found", output)
+
+    def test_duplicate_variant_number_fails(self):
+        text = self.text.replace("## 13. ", "## 12. ")
+        failures, output = self.run_variants(text)
+        self.assertEqual(failures, 1, output)
+        self.assertIn("duplicate variant number 12", output)
 
     def test_main_returns_failure_for_missing_prompt(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -25,7 +25,7 @@ GROUP BY c.id, c.name
 ORDER BY revenue_cents DESC, c.name ASC;
 ```
 
-**为什么危险**：这条查询的正确性藏在四个隐式约定里——`status <> 'canceled'` 对 `NULL` 状态不成立（NULL 比较结果为 NULL，被 JOIN 排除）；`COUNT(o.id)` 不数 NULL（无订单客户计 0）；`GROUP BY` 只按 id+name、却 SELECT 了 `name`（SQLite 允许，标准 SQL 会拒绝）；排序在主键相同时依赖 `name` 兜底。它们都没有写在需求里，改写时任何一处「顺手优化」都会改变结果集。
+**为什么危险**：这条查询的正确性藏在四个隐式约定里——`status <> 'canceled'` 对 `NULL` 状态不成立（NULL 比较结果为 NULL，被 JOIN 排除）；`COUNT(o.id)` 不数 NULL（无订单客户计 0）；`GROUP BY c.id, c.name` 以客户为单位聚合，避免重名客户合并；收入相同时按 `name` 升序。它们都没有写在需求里，改写时任何一处「顺手优化」都会改变结果集。
 
 ## 2. 数据集（让结果可复现）
 
@@ -57,7 +57,8 @@ INSERT INTO customers (id, name, region, created_at) VALUES
     (2, 'Bob', 'EU', '2023-02-01'),
     (3, 'Carol', NULL, '2023-03-01'),
     (4, 'Dave', 'US', '2023-04-01'),
-    (5, 'Eve', 'US', '2023-05-01');
+    (5, 'Eve', 'US', '2023-05-01'),
+    (6, 'Aaron', 'US', '2023-05-02');
 
 INSERT INTO orders (id, customer_id, status, total_cents, created_at) VALUES
     (101, 1, 'paid', 5000, '2023-01-10'),
@@ -68,10 +69,11 @@ INSERT INTO orders (id, customer_id, status, total_cents, created_at) VALUES
     (106, 3, 'paid', 0, '2023-03-03'),
     (107, 3, 'refunded', 1200, '2023-03-04'),
     (108, 5, 'paid', 8000, '2023-04-01'),
-    (109, 5, 'pending', 500, '2023-04-02');
+    (109, 5, 'pending', 500, '2023-04-02'),
+    (110, 6, 'paid', 3000, '2023-04-03');
 ```
 
-数据集刻意包含：无订单客户（Dave）、`NULL` 状态订单（Bob 的 105）、取消订单（Alice 的 103）、0 元订单（Carol 的 106）、没有 `region` 的客户——都是改写时最容易踩的边界。
+数据集刻意包含：无订单客户（Dave）、`NULL` 状态订单（Bob 的 105）、取消订单（Alice 的 103）、0 元订单（Carol 的 106）、没有 `region` 的客户、收入并列的 Aaron 与 Bob——都是改写时最容易踩的边界。
 
 ## 3. 第一步：先锁结果集基线
 
@@ -155,6 +157,7 @@ HERE = Path(__file__).resolve().parent
 GOLDEN = [
     ("Eve", 8500, 2, 1),
     ("Alice", 7500, 2, 2),
+    ("Aaron", 3000, 1, 1),
     ("Bob", 3000, 1, 1),
     ("Carol", 1200, 2, 1),
     ("Dave", 0, 0, 0),

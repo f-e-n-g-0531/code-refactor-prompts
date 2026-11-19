@@ -4,7 +4,9 @@ Run with:  python3 -m unittest discover -s scripts/tests -p "test_*.py" -v
 """
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import re
@@ -13,6 +15,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 CHECKER = ROOT / "scripts" / "check_prompt.py"
@@ -219,8 +222,28 @@ class FixtureTest(unittest.TestCase):
                 result = checker.check(prompt)
                 self.assertIn("language-mismatch", [item["code"] for item in result["errors"]])
 
+    def test_fenced_output_is_not_interpreted_as_an_instruction(self):
+        prompt = PROMPT.format(language="python", fence="python", code="pass", command="pytest")
+        prompt += "\n```text\nrewrite the whole project\n```\n"
+        self.assertTrue(checker.check(prompt, strict=True)["pass"], checker.check(prompt))
+
     def test_fenced_acceptance_commands_remain_valid(self):
         prompt = PROMPT.format(language="python", fence="python", code="pass", command="\n```sh\npytest\n```")
+        self.assertTrue(checker.check(prompt, strict=True)["pass"], checker.check(prompt))
+
+    def test_acceptance_fence_cannot_replace_source(self):
+        prompt = PROMPT.format(language="python", fence="python", code="pass", command="\n```sh\npytest\n```")
+        prompt = prompt.replace("【待重构代码】\n```python\npass\n```", "")
+        self.assertIn("待重构代码", checker.check(prompt, strict=True)["missing_segments"])
+
+    def test_whitespace_only_source_fence_is_empty(self):
+        prompt = PROMPT.format(language="python", fence="python", code="  ", command="pytest")
+        self.assertIn("empty-code-section", [item["code"] for item in checker.check(prompt)["errors"]])
+
+    def test_nested_markdown_acceptance_heading_keeps_commands(self):
+        prompt = (FIXTURES / "good-en-prompt.txt").read_text(encoding="utf-8")
+        prompt = prompt.replace("[ACCEPTANCE CRITERIA]", "## Acceptance Criteria\n\n### Automated checks")
+        self.assertIn("### Automated checks", prompt)
         self.assertTrue(checker.check(prompt, strict=True)["pass"], checker.check(prompt))
 
     def test_unclosed_source_masks_fake_headings_and_commands(self):
@@ -257,6 +280,13 @@ class FixtureTest(unittest.TestCase):
                 self.assertTrue(result["verifiable"], result)
                 self.assertNotIn("unverifiable-acceptance", [item["code"] for item in result["errors"]])
                 self.assertEqual(checker.segment_positions(prompt)["code"], 0)
+
+    def test_full_check_scans_the_whole_prompt_once(self):
+        text = (FIXTURES / "good-en-prompt.txt").read_text(encoding="utf-8")
+        with patch.object(checker, "fenced_blocks", wraps=checker.fenced_blocks) as scans:
+            self.assertTrue(checker.check(text, strict=True)["pass"])
+        self.assertEqual(sum(call.args == (text,) for call in scans.call_args_list), 1)
+        self.assertEqual(scans.call_count, 2)
 
     def test_fixtures(self):
         for name, expected_pass in FIXTURE_EXPECTATIONS:
@@ -297,6 +327,18 @@ class FixtureTest(unittest.TestCase):
         result = checker.check(prompt)
         self.assertFalse(result["pass"])
         self.assertIn("language-mismatch", [item["code"] for item in result["errors"]])
+
+    def test_test_tool_names_match_whole_tokens(self):
+        for command, expected in (("notpytest", "no-test-command"), ("pytest-wrapper", "no-test-command"),
+                                  ("rake test", "language-mismatch"), ("python -m pytest -q", None)):
+            with self.subTest(command=command):
+                prompt = PROMPT.format(language="python", fence="python", code="pass", command=command)
+                result = checker.check(prompt)
+                diagnostics = [item["code"] for item in result["errors"] + result["warnings"]]
+                if expected:
+                    self.assertIn(expected, diagnostics)
+                else:
+                    self.assertEqual(diagnostics, [])
 
     def test_explicit_language_override_mismatch(self):
         template = (FIXTURES / "good-prompt.txt").read_text(encoding="utf-8")
@@ -371,8 +413,19 @@ class CliTest(unittest.TestCase):
             checker.github_annotation("warning", "dir\\a%file", "x%\r\ny", 3),
             "::warning file=dir/a%25file,line=3::x%25%0D%0Ay",
         )
+        self.assertEqual(checker.github_annotation("error", "draft,a:b.prompt.md", "x,y:z", 3),
+                         "::error file=draft%2Ca%3Ab.prompt.md,line=3::x,y:z")
         self.assertEqual(checker.github_annotation("error", None, "x", 3), "::error::x")
         self.assertEqual(checker.github_annotation("notice", "a", "x", 0), "::notice file=a::x")
+
+    def test_multiple_annotations_scan_full_prompt_once(self):
+        text = (FIXTURES / "bad-prompt.txt").read_text(encoding="utf-8")
+        result = checker.check(text, strict=True)
+        with patch.object(checker, "fenced_blocks", wraps=checker.fenced_blocks) as scans:
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                checker._print_github_findings(result, text, "bad.prompt.txt")
+        self.assertGreater(len(output.getvalue().splitlines()), 1)
+        self.assertEqual(sum(call.args == (text,) for call in scans.call_args_list), 1)
 
     def test_github_empty_prompt_exact_output_in_all_modes(self):
         messages = ["缺少段落：" + label for label in
@@ -387,7 +440,8 @@ class CliTest(unittest.TestCase):
                 with self.subTest(mode=mode):
                     source = "-" if mode == "stdin" else str(Path(raw) if mode == "batch" else target)
                     result = run_checker(source, "--format", "github", input_text="")
-                    location = "" if mode == "stdin" else " file=" + str(target).replace("\\", "/")
+                    path = str(target).replace("\\", "/").replace(":", "%3A").replace(",", "%2C")
+                    location = "" if mode == "stdin" else " file=" + path
                     lines = []
                     for index, message in enumerate(messages):
                         line = ",line=1" if location and index < 8 else ""
@@ -536,6 +590,29 @@ class CliTest(unittest.TestCase):
             result = run_checker("--changed", "HEAD~1", cwd=repo)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("no changed prompt files", result.stdout)
+            result = run_checker("--changed", "HEAD~1", "--json", cwd=repo)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(json.loads(result.stdout), {"pass": True, "passed": 0, "failed": 0, "results": []})
+
+    def test_changed_rejects_invalid_include_before_reporting_no_changes(self):
+        for include in (" , ", "/absolute/*.prompt.md"):
+            with self.subTest(include=include):
+                result = run_checker("--changed", "HEAD", "--include", include, "--json")
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn("--include", result.stderr)
+                self.assertEqual(result.stdout, "")
+
+    def test_changed_root_checks_only_committed_prompt_paths(self):
+        with tempfile.TemporaryDirectory() as raw:
+            repo = self._init_repo(raw)
+            prompt = repo / "root prompt.prompt.md"
+            prompt.write_text("broken", encoding="utf-8")
+            self._git(repo, "add", "-A")
+            self._git(repo, "commit", "-qm", "root")
+            (repo / "untracked.prompt.md").write_text("broken", encoding="utf-8")
+            result = run_checker("--changed-root", "--json", cwd=repo)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertEqual([Path(item["file"]).name for item in json.loads(result.stdout)["results"]], [prompt.name])
 
     def test_changed_mode_rejects_unknown_base(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -582,6 +659,22 @@ class CliTest(unittest.TestCase):
             self.assertTrue(raw_bytes.startswith(b"\xef\xbb\xbf"))
             self.assertIn(b"\r\n", raw_bytes)
             self.assertEqual(run_checker(str(target)).returncode, 0)
+
+    def test_fix_preserves_hard_breaks_and_mixed_line_endings(self):
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "mixed.prompt.txt"
+            original_lines = [b"You are a senior Python engineer.  \r\n", b"[CODE TO REFACTOR]\n",
+                              b"{paste code}  \r\n", b"[ACCEPTANCE CRITERIA]\n", b"pytest  \n"]
+            target.write_bytes(b"".join(original_lines))
+            result = run_checker(str(target), "--fix")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            first = target.read_bytes()
+            cursor = 0
+            for line in original_lines:
+                cursor = first.index(line, cursor) + len(line)
+            second = run_checker(str(target), "--fix")
+            self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+            self.assertEqual(target.read_bytes(), first)
 
     def test_fix_does_not_treat_prose_as_segments(self):
         with tempfile.TemporaryDirectory() as raw:

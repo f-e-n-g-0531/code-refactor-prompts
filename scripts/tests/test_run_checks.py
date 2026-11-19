@@ -55,6 +55,18 @@ class RunChecksTest(unittest.TestCase):
                     self.assertEqual(stderr.getvalue(), f"FAILED: {steps[failure][0]}\n")
                     self.assertNotIn("all local checks passed", stdout.getvalue())
 
+    def test_spawn_error_reports_stage_without_starting_later_steps(self):
+        spec = importlib.util.spec_from_file_location("run_checks_spawn_test", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with patch.object(sys, "argv", [str(SCRIPT), "--full"]), patch.object(
+            module.subprocess, "run", side_effect=PermissionError("process creation denied"),
+        ) as execute, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as stderr:
+            self.assertEqual(module.main(), 1)
+        execute.assert_called_once()
+        self.assertIn("structure validation", stderr.getvalue())
+        self.assertIn("process creation denied", stderr.getvalue())
+
     def test_list_fast_gate(self):
         result = run("--list")
         self.assertEqual(result.returncode, 0, result.stderr)

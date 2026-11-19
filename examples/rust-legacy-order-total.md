@@ -164,8 +164,8 @@ fn baseline_matches_current_behaviour() {
 ```rust
 use crate::legacy::Order;
 
-const BOOK_DISCOUNT_PERCENT: i64 = 10;
-const ELECTRONICS_DISCOUNT_PERCENT: i64 = 5;
+const BOOK_DISCOUNT_DIVISOR: i64 = 10;
+const ELECTRONICS_DISCOUNT_DIVISOR: i64 = 20;
 const ORDER_DISCOUNT_THRESHOLD: i64 = 10_000;
 const ORDER_DISCOUNT_DIVISOR: i64 = 50;
 const US_TAX_PERCENT: i64 = 8;
@@ -176,10 +176,7 @@ const VIP_ADJUSTMENT: i64 = 300;
 pub fn total(order: &Order) -> i64 {
     let mut total: i64 = 0;
     for item in order.items.iter().filter(|item| item.qty > 0) {
-        total += apply_discount(
-            item.price * i64::from(item.qty),
-            category_discount_percent(&item.category),
-        );
+        total += apply_category_discount(item.price * i64::from(item.qty), &item.category);
     }
     if total > ORDER_DISCOUNT_THRESHOLD {
         total -= total / ORDER_DISCOUNT_DIVISOR;
@@ -191,16 +188,12 @@ pub fn total(order: &Order) -> i64 {
     total
 }
 
-fn category_discount_percent(category: &str) -> i64 {
+fn apply_category_discount(amount: i64, category: &str) -> i64 {
     match category {
-        "book" => BOOK_DISCOUNT_PERCENT,
-        "electronics" => ELECTRONICS_DISCOUNT_PERCENT,
-        _ => 0,
+        "book" => amount - amount / BOOK_DISCOUNT_DIVISOR,
+        "electronics" => amount - amount / ELECTRONICS_DISCOUNT_DIVISOR,
+        _ => amount,
     }
-}
-
-fn apply_discount(amount: i64, percent: i64) -> i64 {
-    amount - amount * percent / 100
 }
 
 fn tax_for(total: i64, region: &str) -> i64 {
@@ -212,7 +205,7 @@ fn tax_for(total: i64, region: &str) -> i64 {
 }
 ```
 
-注意 apply_discount 用 `amount * percent / 100` 复现原来的 `amount - amount / 10`：对整数而言 `10 * s / 100 == s / 10`，截断点没有变化；迭代器 filter 也保持了原按顺序累加的语义。
+分类折扣保留遗留实现的「先除后减」，不引入额外的乘法溢出；迭代器 `filter` 保留原累加顺序。
 
 ## 5. 第三步：差分测试再兜一层
 
@@ -251,6 +244,8 @@ fn refactored_matches_legacy() {
         ),
         order(vec![item(1, 10_001, "")], "US", false),
         order(vec![item(5, 2001, "electronics")], "US", true),
+        order(vec![item(1, i64::MAX, "book")], "", false),
+        order(vec![item(1, i64::MIN, "electronics")], "", false),
     ];
     for (index, case) in cases.iter().enumerate() {
         assert_eq!(

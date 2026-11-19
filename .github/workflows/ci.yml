@@ -36,25 +36,25 @@ jobs:
       - name: Self-test prompt checker
         run: |
           set -euo pipefail
+          expect_exit() {
+            local expected="$1" actual=0
+            shift
+            "$@" || actual=$?
+            if [[ "$actual" != "$expected" ]]; then
+              printf '::error::Expected exit %s, got %s: %s\n' "$expected" "$actual" "$*" >&2
+              return 1
+            fi
+          }
           python3 scripts/check_prompt.py scripts/fixtures/good-prompt.txt
           python3 scripts/check_prompt.py scripts/fixtures/good-go-prompt.txt
           python3 scripts/check_prompt.py scripts/fixtures/good-en-prompt.txt
           for fixture in bad-prompt.txt bad-language-prompt.txt bad-antipattern-prompt.txt bad-en-prompt.txt; do
-            if python3 scripts/check_prompt.py "scripts/fixtures/$fixture"; then
-              echo "::error::check_prompt.py should reject scripts/fixtures/$fixture"
-              exit 1
-            fi
+            expect_exit 1 python3 scripts/check_prompt.py "scripts/fixtures/$fixture"
           done
-          if python3 scripts/check_prompt.py scripts/fixtures/good-prompt.txt --lang python; then
-            echo "::error::check_prompt.py should reject a mismatched --lang override"
-            exit 1
-          fi
+          expect_exit 1 python3 scripts/check_prompt.py scripts/fixtures/good-prompt.txt --lang python
           python3 scripts/check_prompt.py scripts/fixtures/weak-prompt.txt > /dev/null
-          if python3 scripts/check_prompt.py scripts/fixtures/weak-prompt.txt --strict > /dev/null 2>&1; then
-            echo "::error::--strict should turn the weak prompt's warnings into a failure"
-            exit 1
-          fi
-          skeleton="$(python3 scripts/check_prompt.py scripts/fixtures/bad-prompt.txt --skeleton || true)"
+          expect_exit 1 python3 scripts/check_prompt.py scripts/fixtures/weak-prompt.txt --strict
+          skeleton="$(expect_exit 1 python3 scripts/check_prompt.py scripts/fixtures/bad-prompt.txt --skeleton)"
           if ! grep -q "缺失段落骨架" <<< "$skeleton"; then
             echo "::error::--skeleton did not emit missing-segment skeletons"
             exit 1
@@ -65,15 +65,9 @@ jobs:
           python3 scripts/check_prompt.py /tmp/composed-zh.txt
           python3 scripts/compose_prompt.py --code scripts/fixtures/sample.py --output-lang en --out /tmp/composed-en.txt
           python3 scripts/check_prompt.py /tmp/composed-en.txt
-          if python3 scripts/compose_prompt.py --code scripts/fixtures/sample.go --test-command pytest > /dev/null 2>&1; then
-            echo "::error::compose_prompt.py should refuse a prompt that fails the self-check"
-            exit 1
-          fi
+          expect_exit 1 python3 scripts/compose_prompt.py --code scripts/fixtures/sample.go --test-command pytest
           cp scripts/fixtures/bad-prompt.txt /tmp/bad-fix.txt
-          if python3 scripts/check_prompt.py /tmp/bad-fix.txt > /dev/null 2>&1; then
-            echo "::error::bad fixture should fail before --fix"
-            exit 1
-          fi
+          expect_exit 1 python3 scripts/check_prompt.py /tmp/bad-fix.txt
           python3 scripts/check_prompt.py /tmp/bad-fix.txt --fix > /dev/null
           python3 scripts/check_prompt.py /tmp/bad-fix.txt
           echo "prompt checker and composer self-test OK"
@@ -81,15 +75,25 @@ jobs:
       - name: Test GitHub annotation output
         run: |
           set -euo pipefail
-          output="$(python3 scripts/check_prompt.py --format github scripts/fixtures/bad-prompt.txt || true)"
+          status=0
+          output="$(python3 scripts/check_prompt.py --format github scripts/fixtures/bad-prompt.txt)" || status=$?
+          if [[ "$status" != 1 ]]; then
+            echo "::error::Expected exit 1 for a bad prompt, got $status"
+            exit 1
+          fi
           grep -Eq '::error file=scripts/fixtures/bad-prompt\.txt(,line=[0-9]+)?::' <<< "$output"
-          if python3 scripts/check_prompt.py --format github --json scripts/fixtures/good-prompt.txt; then
-            echo "::error::--format github must not combine with --json"
+          status=0
+          python3 scripts/check_prompt.py --format github --json scripts/fixtures/good-prompt.txt || status=$?
+          if [[ "$status" != 2 ]]; then
+            echo "::error::Expected exit 2 for incompatible options, got $status"
             exit 1
           fi
           echo "GitHub annotations OK"
 
       - name: Test the prompt tooling
+        env:
+          # A dedicated --verify step below runs both extracted gates.
+          SKIP_NESTED_PACKAGE_VERIFY: "1"
         run: python3 -m unittest discover -s scripts/tests -p "test_*.py" -v
 
       - name: Test the packaged pre-commit console script
@@ -98,27 +102,16 @@ jobs:
           python3 -m venv /tmp/precommit-venv
           /tmp/precommit-venv/bin/pip install --quiet --disable-pip-version-check .
           /tmp/precommit-venv/bin/code-refactor-prompt-check --strict scripts/fixtures/good-prompt.txt
-          if /tmp/precommit-venv/bin/code-refactor-prompt-check --strict scripts/fixtures/bad-prompt.txt; then
-            echo "::error::the console script must reject a bad prompt"
+          status=0
+          /tmp/precommit-venv/bin/code-refactor-prompt-check --strict scripts/fixtures/bad-prompt.txt || status=$?
+          if [[ "$status" != 1 ]]; then
+            echo "::error::Expected console script exit 1 for a bad prompt, got $status"
             exit 1
           fi
           echo "pre-commit console script OK"
 
       - name: Test the pre-commit hook end to end
-        run: |
-          set -euo pipefail
-          python3 -m venv /tmp/precommit-e2e-venv
-          /tmp/precommit-e2e-venv/bin/pip install --quiet --disable-pip-version-check pre-commit
-          mkdir -p .pre-commit-e2e
-          cp scripts/fixtures/good-prompt.txt .pre-commit-e2e/order.prompt.txt
-          cp scripts/fixtures/bad-prompt.txt .pre-commit-e2e/bad.prompt.txt
-          /tmp/precommit-e2e-venv/bin/pre-commit try-repo . --ref HEAD --files .pre-commit-e2e/order.prompt.txt
-          if /tmp/precommit-e2e-venv/bin/pre-commit try-repo . --ref HEAD --files .pre-commit-e2e/bad.prompt.txt; then
-            echo "::error::the pre-commit hook must reject a bad prompt"
-            exit 1
-          fi
-          rm -rf .pre-commit-e2e
-          echo "pre-commit hook end-to-end OK"
+        run: python3 .github/scripts/verify_precommit.py
 
       - name: Set up Node.js for the TypeScript example
         uses: actions/setup-node@v7
@@ -167,11 +160,11 @@ jobs:
         run: |
           python -m pip install --quiet --disable-pip-version-check .
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          python -m check_prompt --strict scripts/fixtures/good-prompt.txt
+          code-refactor-prompt-check --strict scripts/fixtures/good-prompt.txt
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          python -m check_prompt --strict scripts/fixtures/bad-prompt.txt
-          if ($LASTEXITCODE -eq 0) {
-            Write-Error "the console script must reject a bad prompt"
+          code-refactor-prompt-check --strict scripts/fixtures/bad-prompt.txt
+          if ($LASTEXITCODE -ne 1) {
+            Write-Error "Expected checker exit 1 for a bad prompt, got $LASTEXITCODE"
             exit 1
           }
           # The bad prompt is expected to fail; reset the exit code so pwsh does
@@ -204,9 +197,11 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --quiet --disable-pip-version-check .
-          python -m check_prompt --strict scripts/fixtures/good-prompt.txt
-          if python -m check_prompt --strict scripts/fixtures/bad-prompt.txt; then
-            echo "::error::the console script must reject a bad prompt"
+          code-refactor-prompt-check --strict scripts/fixtures/good-prompt.txt
+          status=0
+          code-refactor-prompt-check --strict scripts/fixtures/bad-prompt.txt || status=$?
+          if [[ "$status" != 1 ]]; then
+            echo "::error::Expected checker exit 1 for a bad prompt, got $status"
             exit 1
           fi
 

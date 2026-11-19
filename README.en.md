@@ -57,6 +57,7 @@ code-refactor-prompts/
         ├── audit_templates.py    graded audit: full checker for templates, acceptance anchor for variants
         ├── package_skill.py      unified packager (zip / tar.gz / SHA256SUMS) with unpack gate (--verify)
         ├── verify_examples.py    extract marked code from examples and run it
+        ├── verify_precommit.py   install and verify the current commit’s pre-commit hook
         └── release_notes.py      release notes from CHANGELOG
 ```
 
@@ -70,12 +71,12 @@ code-refactor-prompts/
 - **End-to-end workflows**: review-first, legacy baseline, multi-file batching, iterative repair.
 - **Batch checks and commit gating**: `check_prompt.py` accepts multiple files and directories (per-file PASS/FAIL plus a summary); `.pre-commit-hooks.yaml` lets pre-commit and CI gate on it directly.
 - **PR gate (GitHub Actions)**: the root `action.yml` checks prompts in a pull request and annotates findings on the matching files via `--format github`; with `changed-only: true` it checks only the prompt files changed in that PR.
-- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 151 tests, run on every CI build.
+- **Tooling regression tests**: `scripts/tests/` covers the checker, composer (including tier C), `--fix` loop, source-link check, the 13-language matrix and the validator itself with 206 tests, run on every CI build.
 - **One-command local gate**: `scripts/run_checks.py` runs structure validation, template audit, tooling tests and the offline source-link check; `--full` also executes every runnable example (needs Go / Rust / Node / .NET / JDK / Python), `--list` prints the steps.
 - **Delivery checklist**: `references/checklists.md` walks from prompt authoring to merge.
 - **One-command composition**: `scripts/compose_prompt.py --code <file>` builds a filled eight-segment prompt (Chinese or English, auto-detects 13 languages and their test commands); supplying both `--rule` (business rules) and `--case` (acceptance cases) produces a full tier-C prompt (`--require-c-tier` refuses to emit unless both are supplied), and the result is refused unless it passes the shipped checker.
 - **Bilingual self-check**: `scripts/check_prompt.py` validates the eight segments and verifiability in Chinese and English, checks that the code section contains code (or a paste placeholder) and that the acceptance command / cases live in the acceptance section, detects the prompt language and checks that the acceptance command matches it (e.g. Go requires `go test`), and flags anti-patterns such as "tweak the tests as well" or "rewrite the whole project". Adds `--strict` (warnings fail), `--skeleton` (print fill-in skeletons for missing segments) and `--fix` (insert missing-segment skeletons at their canonical position and re-check).
-- **Executable examples**: 7 runnable examples are run in CI by `verify_examples.py` (`go test` / `python -m unittest` / `cargo test` / `node --test` / `dotnet run` / `javac` + `java` exit-code assertions / SQLite result-set comparison), so docs cannot drift from code.
+- **Executable examples**: 7 runnable examples are run in CI by `verify_examples.py` (compiling and running Go tests / `python -m unittest` / `cargo test` / `node --test` / `dotnet run` / `javac` + `java` exit-code assertions / SQLite result-set comparison), so docs cannot drift from code.
 - **Source-link checks**: `scripts/check_sources.py` validates `references/sources.md` offline for URL syntax and duplicates, and requests every URL with `--online`; CI runs the offline check on every push and a weekly `Link check` workflow catches rot.
 - **Graded audit**: `audit_templates.py` runs the full checker over the default and English master templates, checks the 12 variants that carry a prompt block for an acceptance anchor and error-level anti-patterns, and checks the guard variant for its `NO_CODE_PROVIDED` / `NO_REFACTORING_NEEDED` markers (the quick-reference section is skipped).
 - **English template**: `references/template-en.md` provides the eight-segment master template in English.
@@ -99,8 +100,8 @@ Run these commands from the skill repo root and replace `src/order.go` with your
 ```bash
 python3 scripts/compose_prompt.py --code src/order.go --project order-pricing \
     --pain "150-line Total function, magic numbers everywhere" \
-    --rule "books 10% off, electronics 5% off, 2% off above 100" \
-    --case "empty order -> 0" --case "book 100x1 -> 102.2" \
+    --rule "subtract one tenth of the book subtotal or one twentieth of the electronics subtotal; subtract one fiftieth from totals above 10000; no tax without a region and no adjustment for non-VIP orders" \
+    --case "empty order -> 0" --case "no region, not VIP, book 1000x1 -> 900" \
     --output-lang en --out prompt.txt
 python3 scripts/check_prompt.py prompt.txt
 ```
@@ -123,7 +124,7 @@ python3 scripts/check_prompt.py --changed origin/main --strict # only prompts ch
 cat my-prompt.txt | python3 scripts/check_prompt.py -
 ```
 
-`--changed BASE` only checks **committed** changes (`git diff BASE...HEAD`); commit local edits first, or pass the file path directly.
+`--changed BASE` selects files from the committed diff (`git diff BASE...HEAD`) and then checks their current working-tree contents. Pass files outside that diff directly.
 
 It checks structure and known anti-patterns only (Chinese and English); semantic quality is still your call. CI self-tests the script with the good / bad fixtures, including a language-mismatch case, English anti-patterns, strict mode and the skeleton output.
 
@@ -153,7 +154,7 @@ Then in `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/f-e-n-g-0531/code-refactor-prompts
-    rev: v1.20.1
+    rev: v1.21.0
     hooks:
       - id: code-refactor-prompt-check
 ```
@@ -174,19 +175,19 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0        # changed-only needs the full history
-      - uses: f-e-n-g-0531/code-refactor-prompts@v1.20.1
+      - uses: f-e-n-g-0531/code-refactor-prompts@v1.21.0
         with:
           changed-only: true     # only prompts changed in this PR; otherwise files is used (repo root by default)
           strict: true           # warnings fail too
 ```
 
-Requires a Linux / macOS runner (bash + python3). Local equivalent: `python3 scripts/check_prompt.py --changed origin/main --format github --strict`.
+Requires a Linux / macOS runner (bash + python3). With `changed-only` disabled, `files` takes a single file or directory, or a YAML multiline string with one path per line (paths may contain spaces). Local equivalent: `python3 scripts/check_prompt.py --changed origin/main --format github --strict`.
 
 ## CI and release
 
-- **CI** ([.github/workflows/ci.yml](https://github.com/f-e-n-g-0531/code-refactor-prompts/blob/main/.github/workflows/ci.yml)): validates skill structure, frontmatter, version alignment, references, Markdown structure (duplicate headings) and test counts, links and copy; audits master templates and specialised variants; self-tests the prompt checker; runs the tooling regression suite; checks source links offline (`check_sources.py`); self-tests GitHub annotation output (`--format github`); installs and tests the packaged pre-commit console script; runs the hook end to end with `pre-commit try-repo` (good prompt passes, bad prompt blocks); sets up Node 24 and JDK 17 and executes all 7 runnable examples (go test / python unittest / cargo test / node --test / dotnet run / javac + java / SQLite comparison); dry-runs packaging. A Windows runner job re-runs structure validation, template audit, tooling tests, the offline source check and installing the package to verify the checker, to cover cross-platform differences; a Python 3.9 job verifies the `requires-python >=3.9` claim.
-- **Link check** ([.github/workflows/link-check.yml](https://github.com/f-e-n-g-0531/code-refactor-prompts/blob/main/.github/workflows/link-check.yml)): every Monday 03:17 UTC (or manually) it requests every URL in `references/sources.md` and fails the run when a link is broken.
-- **Release** ([.github/workflows/release.yml](https://github.com/f-e-n-g-0531/code-refactor-prompts/blob/main/.github/workflows/release.yml)): on a `v*` tag it first requires canonical `vX.Y.Z` matching the current skill and Python package versions, audits templates and executes the examples. A shared packager builds `zip` / `tar.gz` / `SHA256SUMS` and runs the local gate in both extracted archives before publication. Distributions include `.github/scripts/`, but omit workflows and Dependabot configuration.
+- **CI** ([.github/workflows/ci.yml](https://github.com/f-e-n-g-0531/code-refactor-prompts/blob/main/.github/workflows/ci.yml)): validates skill structure, frontmatter, version alignment, references, Markdown structure (duplicate headings) and test counts, links and copy; audits master templates and specialised variants; self-tests the prompt checker; runs the tooling regression suite; checks source links offline (`check_sources.py`); self-tests GitHub annotation output (`--format github`); installs and tests the packaged pre-commit console script; runs the hook end to end with `pre-commit try-repo` (good prompt passes, bad prompt blocks); sets up Node 24 and JDK 17 and executes all 7 runnable examples (compiling and running Go tests / python unittest / cargo test / node --test / dotnet run / javac + java / SQLite comparison); dry-runs packaging. A Windows runner job re-runs structure validation, template audit, tooling tests, the offline source check and installing the package to verify the checker, to cover cross-platform differences; a Python 3.9 job verifies the `requires-python >=3.9` claim.
+- **Link check** ([.github/workflows/link-check.yml](https://github.com/f-e-n-g-0531/code-refactor-prompts/blob/main/.github/workflows/link-check.yml)): every Monday 03:17 UTC (or manually) it requests every URL in `references/sources.md` and fails on link-check errors. HTTP 403 and 429 are warnings only.
+- **Release** ([.github/workflows/release.yml](https://github.com/f-e-n-g-0531/code-refactor-prompts/blob/main/.github/workflows/release.yml)): on a `v*` tag it first requires canonical `vX.Y.Z` matching the current skill and Python package versions, audits templates and executes the examples. A shared packager builds `zip` / `tar.gz` / `SHA256SUMS.txt` and runs the local gate in both extracted archives before publication. Distributions include `.github/scripts/`, but omit workflows and Dependabot configuration.
 
 Release steps: update `CHANGELOG.md`, `metadata.version`, the `pyproject.toml` version and the version references in both READMEs (`rev: vX.Y.Z` and the Action example `@vX.Y.Z`) plus the hook comment (the validator keeps them in sync) → push `main` → `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`.
 

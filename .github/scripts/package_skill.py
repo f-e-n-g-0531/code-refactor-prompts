@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import io
 import os
@@ -54,8 +55,15 @@ def build(root: Path, output: Path, label: str) -> list[Path]:
     archives = [output / f"{PREFIX}-{label}.zip", output / f"{PREFIX}-{label}.tar.gz"]
     with zipfile.ZipFile(archives[0], "w", zipfile.ZIP_DEFLATED) as archive:
         for name, data in sorted(files.items()):
-            archive.writestr(f"{PREFIX}/{name}", data)
-    with tarfile.open(archives[1], "w:gz") as archive:
+            # ZIP cannot represent dates before 1980; use its fixed epoch.
+            info = zipfile.ZipInfo(f"{PREFIX}/{name}")
+            info.create_system = 3  # Unix permissions, independent of the host.
+            info.external_attr = (stat.S_IFREG | 0o644) << 16
+            archive.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED)
+    # Suppress the gzip wrapper's timestamp and original filename too.
+    with archives[1].open("wb") as stream, gzip.GzipFile(
+        filename="", fileobj=stream, mode="wb", mtime=0,
+    ) as compressed, tarfile.open(fileobj=compressed, mode="w") as archive:
         for name, data in sorted(files.items()):
             info = tarfile.TarInfo(f"{PREFIX}/{name}")
             info.size = len(data)
@@ -68,13 +76,22 @@ def build(root: Path, output: Path, label: str) -> list[Path]:
 
 
 def verify(archives: list[Path], root: Path) -> None:
-    expected = {f"{PREFIX}/{name}": data for name, data in package_files(root).items()}
     if not archives:
         raise ValueError("no release archives supplied")
+    formats = ["zip" if path.name.endswith(".zip") else "tar.gz" if path.name.endswith(".tar.gz") else "unknown"
+               for path in archives]
+    if sorted(formats) != ["tar.gz", "zip"]:
+        raise ValueError("release verification requires exactly one ZIP and one tar.gz archive")
+    expected = {f"{PREFIX}/{name}": data for name, data in package_files(root).items()}
+    manifests: dict[Path, list[str]] = {}
     validated: list[dict[str, bytes]] = []
     for path in archives:
+        snapshot = path.read_bytes()
+        checksum = f"{hashlib.sha256(snapshot).hexdigest()}  {path.name}"
+        manifest = path.parent / "SHA256SUMS.txt"
+        manifests.setdefault(manifest, []).append(checksum)
         if path.suffix == ".zip":
-            with zipfile.ZipFile(path) as archive:
+            with zipfile.ZipFile(io.BytesIO(snapshot)) as archive:
                 actual = {}
                 for member in archive.infolist():
                     if member.filename in actual:
@@ -85,7 +102,7 @@ def verify(archives: list[Path], root: Path) -> None:
                         raise ValueError(f"unexpected archive entry: {member.filename}")
                     actual[member.filename] = archive.read(member)
         else:
-            with tarfile.open(path) as archive:
+            with tarfile.open(fileobj=io.BytesIO(snapshot), mode="r:gz") as archive:
                 actual = {}
                 for member in archive.getmembers():
                     if member.name in actual:
@@ -95,10 +112,11 @@ def verify(archives: list[Path], root: Path) -> None:
                     actual[member.name] = archive.extractfile(member).read()
         if actual != expected:
             raise ValueError(f"package contents mismatch: {path}")
-        checksum = f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}"
-        if checksum not in (path.parent / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines():
-            raise ValueError(f"checksum mismatch: {path}")
         validated.append(actual)
+    for manifest, records in manifests.items():
+        lines = manifest.read_text(encoding="utf-8").splitlines()
+        if len(records) != len(set(records)) or sorted(lines) != sorted(records):
+            raise ValueError(f"checksum mismatch: {manifest} must list each supplied archive exactly once")
     # Preflight the entire artifact set before executing code from any member.
     for actual in validated:
         with tempfile.TemporaryDirectory() as temporary:

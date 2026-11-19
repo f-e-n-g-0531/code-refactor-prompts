@@ -106,7 +106,8 @@ if __name__ == "__main__":
 BOOK_DISCOUNT = 0.1
 ORDER_THRESHOLD = 100
 ORDER_DISCOUNT_RATE = 0.98
-TAX_RATES = {"US": 0.08, "EU": 0.2}
+US_TAX_RATE = 0.08
+EU_TAX_RATE = 0.2
 VIP_ADJUSTMENT = 3
 
 
@@ -114,14 +115,17 @@ def calc(items, region, is_vip=False):
     total = _subtotal(items)
     if total > ORDER_THRESHOLD:
         total *= ORDER_DISCOUNT_RATE
-    total += total * TAX_RATES.get(region, 0)
+    if region == "US":
+        total += total * US_TAX_RATE
+    elif region == "EU":
+        total += total * EU_TAX_RATE
     if is_vip:
         total -= VIP_ADJUSTMENT
     return round(total, 2)
 
 
 def _subtotal(items):
-    total = 0.0
+    total = 0
     for item in items:
         if not item:                    # 原行为：None / 空 dict 视为无条目
             continue
@@ -142,6 +146,7 @@ def _subtotal(items):
 ```python
 import random
 import unittest
+from decimal import Decimal
 
 from legacy import calc
 from legacy_refactored import calc as calc_refactored
@@ -149,6 +154,10 @@ from legacy_refactored import calc as calc_refactored
 
 class EquivalenceTest(unittest.TestCase):
     CASES = [
+        ([], "", False),
+        ([], [], False),
+        ([{"qty": 1, "price": Decimal("12.34")}], "", False),
+        ([{"qty": 1, "price": float("inf")}], "", False),
         ([], "US", False),
         ([None], "US", False),
         ([{"qty": 3, "price": 4000, "cat": "book"}], "EU", False),
@@ -160,10 +169,10 @@ class EquivalenceTest(unittest.TestCase):
     def test_equivalence(self):
         for items, region, is_vip in self.CASES:
             with self.subTest(items=items, region=region, is_vip=is_vip):
-                self.assertEqual(
-                    calc(items, region, is_vip),
-                    calc_refactored(items, region, is_vip),
-                )
+                before = calc(items, region, is_vip)
+                after = calc_refactored(items, region, is_vip)
+                self.assertIs(type(after), type(before))
+                self.assertEqual(after, before)
 
     def test_generated_equivalence(self):
         rng = random.Random(7)

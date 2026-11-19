@@ -109,13 +109,15 @@ export interface Order {
 const BOOK_DISCOUNT = 0.1;
 const ORDER_THRESHOLD = 100;
 const ORDER_DISCOUNT_RATE = 0.98;
-const TAX_RATES: Record<string, number> = { US: 0.08, EU: 0.2 };
+const US_TAX_RATE = 0.08;
+const EU_TAX_RATE = 0.2;
 const VIP_ADJUSTMENT = 3;
 
 export function total(order: Order): number {
   let t = subtotal(order.items);
   if (t > ORDER_THRESHOLD) t *= ORDER_DISCOUNT_RATE;
-  t += t * (TAX_RATES[order.region ?? ''] ?? 0);
+  if (order.region === 'US') t += t * US_TAX_RATE;
+  else if (order.region === 'EU') t += t * EU_TAX_RATE;
   if (order.vip) t -= VIP_ADJUSTMENT;
   return Math.round(t * 100) / 100;
 }
@@ -133,7 +135,7 @@ function subtotal(items: Array<Item | null>): number {
 }
 ```
 
-注意 `ORDER_DISCOUNT_RATE = 0.98` 直接复用原字面量、`Math.round` 留在同一步、`|| 0` 与 `?? ''` 的语义分界保持原样：这些都是「看起来等价」的改写最容易破坏的浮点与真值边界。
+注意 `ORDER_DISCOUNT_RATE = 0.98` 直接复用原字面量、`Math.round` 留在同一步、`|| 0` 的真值语义保留，非 US/EU 地区不做税费运算：这些都是「看起来等价」的改写最容易破坏的浮点与真值边界。
 
 ## 5. 第三步：差分测试再兜一层
 
@@ -161,6 +163,8 @@ const cases: Order[] = [
   },
   { items: [{ qty: 1, price: 10001 }], region: 'US', vip: false },
   { items: [{ qty: 5, price: 2001, cat: 'electronics' }], region: 'US', vip: true },
+  { items: [{ qty: 1, price: 50 }], region: 'constructor' },
+  { items: [{ qty: 1, price: Infinity }] },
 ];
 
 test('refactored matches legacy on every case', () => {
@@ -201,6 +205,6 @@ test('refactored matches legacy on generated cases', () => {
 ## 7. 这个流程为什么可靠
 
 - **运行时行为先固定**：类型只能保证编译期，行为等价仍靠基线测试与差分测试。
-- **隐式真值判断被保留**：`|| 0`、`??`、`Math.round` 的边界没有在重构中「顺手优化」，避免把重构变成行为变更。
+- **隐式真值判断被保留**：`|| 0`、地区严格比较、`Math.round` 的边界没有在重构中「顺手优化」，避免把重构变成行为变更。
 - **类型与行为解耦**：补 `interface` 是纯编译期收益，测试证明运行时零差异。
 - **要改行为就单独提**：例如把 `|| 0` 改成严格校验，属于行为变更，应另开变更单并同步改测试。

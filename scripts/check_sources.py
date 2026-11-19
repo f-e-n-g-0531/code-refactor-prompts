@@ -31,8 +31,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCES = ROOT / "references" / "sources.md"
-URL_RE = re.compile(r"https?://[^\s<>\[\]\"'\x60，。；、]+")
-TRAILING = ".,;:!?]>}，。；、"
+URL_RE = re.compile(
+    r"<(?P<angle>https?://[^\s<>]+)>|"
+    r"(?P<bare>https?://(?:\[[^\s<>\[\]]*\][^\s<>\[\]\"'\x60，。；、]*|"
+    r"[^\s<>\[\]\"'\x60，。；、]+))",
+    re.I,
+)
+TRAILING = ".,;:!?>}，。；、"
 USER_AGENT = (
     "Mozilla/5.0 (compatible; code-refactor-prompts-link-check/1.0; "
     "+https://github.com/f-e-n-g-0531/code-refactor-prompts)"
@@ -49,7 +54,10 @@ def extract_urls(text: str) -> list[str]:
     """
     urls = []
     for match in URL_RE.finditer(text):
-        url = match.group(0).rstrip(TRAILING)
+        if match["angle"] is not None:
+            urls.append(match["angle"])
+            continue
+        url = match["bare"].rstrip(TRAILING)
         while url.endswith(")") and url.count("(") < url.count(")"):
             url = url[:-1]
         urls.append(url)
@@ -66,10 +74,11 @@ def validate(url: str) -> str | None:
         return f"malformed URL: {exc}"
     if parsed.scheme not in {"http", "https"}:
         return f"unsupported scheme {parsed.scheme!r}"
-    if not parsed.netloc:
+    host = parsed.hostname
+    if not host:
         return "missing host"
-    host = parsed.hostname or ""
-    if "." not in host and host != "localhost":
+    # urlparse validates bracketed address literals while parsing the authority.
+    if "." not in host and host != "localhost" and not parsed.netloc.rsplit("@", 1)[-1].startswith("["):
         return f"host {host!r} has no dot"
     return None
 
@@ -124,11 +133,11 @@ def check_online(url: str, timeout: float, attempts: int = 2) -> tuple[str, str]
         request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
-                response.read(2048)
                 code = response.status
             return classify(code)
         except urllib.error.HTTPError as exc:
-            return classify(exc.code)
+            with exc:
+                return classify(exc.code)
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             last_error = str(exc)
             if attempt < attempts:
@@ -145,7 +154,12 @@ def collect(paths: list[str]) -> tuple[list[Path], list[str]]:
     problems: list[str] = []
     for raw in paths:
         path = Path(raw)
-        if not path.is_file():
+        try:
+            is_file = path.is_file()
+        except OSError as exc:
+            problems.append(f"cannot inspect {path}: {exc}")
+            continue
+        if not is_file:
             problems.append(f"file not found: {raw}")
         else:
             files.append(path)
@@ -188,6 +202,9 @@ def main() -> int:
         except UnicodeDecodeError:
             print(f"cannot read {path}: not valid UTF-8; save it as UTF-8", file=sys.stderr)
             return 2
+        except OSError as exc:
+            print(f"cannot read {path}: {exc}", file=sys.stderr)
+            return 2
         occurrences.extend(extract_urls(text))
     references = len(occurrences)
     urls = list(dict.fromkeys(occurrences))
@@ -195,27 +212,18 @@ def main() -> int:
         print("no URLs found in: " + ", ".join(str(path) for path in files), file=sys.stderr)
         return 1
 
-    entries: list[dict] = []
+    problems_by_url = {url: validate(url) for url in urls}
+    valid = [url for url, problem in problems_by_url.items() if problem is None]
     if args.online:
-        valid = [url for url in urls if validate(url) is None]
         with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-            checked = dict(
-                zip(valid, pool.map(lambda url: check_online(url, args.timeout), valid))
-            )
-        for url in urls:
-            problem = validate(url)
-            if problem:
-                entries.append({"url": url, "status": "invalid", "detail": problem})
-            else:
-                status, detail = checked[url]
-                entries.append({"url": url, "status": status, "detail": detail})
+            checked = dict(zip(valid, pool.map(lambda url: check_online(url, args.timeout), valid)))
     else:
-        for url in urls:
-            problem = validate(url)
-            if problem:
-                entries.append({"url": url, "status": "invalid", "detail": problem})
-            else:
-                entries.append({"url": url, "status": "pass", "detail": "syntax OK"})
+        checked = dict.fromkeys(valid, ("pass", "syntax OK"))
+
+    entries: list[dict] = []
+    for url, problem in problems_by_url.items():
+        status, detail = ("invalid", problem) if problem is not None else checked[url]
+        entries.append({"url": url, "status": status, "detail": detail})
 
     passed = sum(1 for entry in entries if entry["status"] == "pass")
     warned = sum(1 for entry in entries if entry["status"] == "warn")

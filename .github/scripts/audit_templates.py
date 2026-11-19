@@ -27,16 +27,10 @@ CHECKER = ROOT / "scripts" / "check_prompt.py"
 VARIANTS = ROOT / "references" / "specialized-prompts.md"
 
 MASTER_TEMPLATES = [
-    ("SKILL.md", r"## 默认模板[^\n]*\n(?:.|\n)*?\x60\x60\x60text\n(.*?)\x60\x60\x60", "默认模板（中文）"),
-    (
-        "references/template-en.md",
-        r"## Master template[^\n]*\n(?:.|\n)*?\x60\x60\x60text\n(.*?)\x60\x60\x60",
-        "master template (English)",
-    ),
+    ("SKILL.md", r"^## 默认模板", "默认模板（中文）"),
+    ("references/template-en.md", r"^## Master template", "master template (English)"),
 ]
-
 VARIANT_HEADING = re.compile(r"^##\s+(\d+)\.\s+(.+?)\s*$", re.M)
-FENCE = re.compile(r"\x60\x60\x60[^\r\n]*\r?\n(.*?)\r?\n?\x60\x60\x60", re.S)
 VERIFICATION_ANCHOR = re.compile(r"验收|验证|测试|等价|回归", re.I)
 # Section 6 is a language reference table, not a prompt fragment.
 REFERENCE_SECTIONS = {("6", "分语言定制要点")}
@@ -55,12 +49,21 @@ def audit_master_templates(checker) -> int:
     failures = 0
     for rel, pattern, label in MASTER_TEMPLATES:
         text = (ROOT / rel).read_text(encoding="utf-8")
-        match = re.search(pattern, text, re.S)
-        if not match:
-            print(f"FAIL {label}: template block not found in {rel}")
+        blocks = list(checker.fenced_blocks(text))
+        visible = checker._heading_text(text, blocks)
+        heading = re.search(pattern, visible, re.M)
+        end = len(text)
+        if heading:
+            following = re.compile(r"^#{1,2}[ \t]", re.M).search(visible, heading.end())
+            if following:
+                end = following.start()
+        templates = [text[start:stop] for opener, _, start, stop, info, closed in blocks
+                     if heading and heading.end() <= opener < end and closed and info == "text"]
+        if len(templates) != 1:
+            print(f"FAIL {label}: expected one closed text template block in {rel}, found {len(templates)}")
             failures += 1
             continue
-        result = checker.check(match.group(1))
+        result = checker.check(templates[0])
         if result["pass"]:
             print(f"PASS {label}: passes the full prompt checker ({rel})")
         else:
@@ -71,20 +74,50 @@ def audit_master_templates(checker) -> int:
     return failures
 
 
-def variant_sections(text: str):
-    headings = list(VARIANT_HEADING.finditer(text))
+def variant_sections(text: str, checker):
+    # Search only between fenced blocks, keeping offsets in the original text.
+    headings = []
+    offset = 0
+    for start, end, *_ in checker.fenced_blocks(text):
+        headings.extend(VARIANT_HEADING.finditer(text, offset, start))
+        offset = end
+    headings.extend(VARIANT_HEADING.finditer(text, offset))
     for index, heading in enumerate(headings):
         end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
         yield heading.group(1), heading.group(2), text[heading.end() : end]
+
+
+def restarts_prompt_fence(body: str, start: int, content_start: int, content_end: int) -> bool:
+    # A missing closer can swallow the next section and use its closer.
+    # Literal nested text fences must use a shorter or different delimiter.
+    opener = re.match(r"[ \t]*(`+|~+)[ \t]*text[ \t]*\r?\n$", body[start:content_start])
+    if opener is None:
+        return False
+    marker = re.escape(opener[1])
+    return bool(re.search(rf"^[ \t]{{0,3}}{marker}[ \t]*text[ \t]*\r?$",
+                          body[content_start:content_end], re.M))
 
 
 def audit_variants(checker) -> int:
     text = VARIANTS.read_text(encoding="utf-8")
     failures = 0
     checked = 0
-    for number, title, body in variant_sections(text):
-        blocks = FENCE.findall(body)
-        if not blocks and (number, title) in REFERENCE_SECTIONS:
+    seen_numbers: set[int] = set()
+    for number, title, body in variant_sections(text, checker):
+        index = int(number)
+        if index in seen_numbers:
+            print(f"FAIL variant {number} ({title}): duplicate variant number {index}")
+            failures += 1
+        seen_numbers.add(index)
+        spans = list(checker.fenced_blocks(body))
+        if any(not closed or restarts_prompt_fence(body, start, content_start, content_end)
+               for start, _, content_start, content_end, _, closed in spans):
+            checked += 1
+            print(f"FAIL variant {number} ({title}): unclosed prompt fence or ambiguous nested prompt fence")
+            failures += 1
+            continue
+        blocks = [body[start:end] for _, _, start, end, _, _ in spans if body[start:end].strip()]
+        if not spans and (number, title) in REFERENCE_SECTIONS:
             print(f"SKIP variant {number} ({title}): reference table, no prompt block")
             continue
         checked += 1
@@ -92,7 +125,7 @@ def audit_variants(checker) -> int:
             print(f"FAIL variant {number} ({title}): prompt block not found")
             failures += 1
             continue
-        prompt = "\n".join(blocks)
+        prompt = "\n".join(checker._heading_text(block) for block in blocks)
         problems: list[str] = []
         if "守卫" in title:
             if not all(marker in prompt for marker in GUARD_MARKERS):
@@ -108,6 +141,12 @@ def audit_variants(checker) -> int:
         else:
             kind = "guard fragment" if "守卫" in title else "verification anchor"
             print(f"PASS variant {number} ({title}): {kind}")
+    if not seen_numbers:
+        print("FAIL specialised variants: no numbered variant headings")
+        failures += 1
+    elif not checked:
+        print("FAIL specialised variants: no prompt variants found")
+        failures += 1
     print(f"\n{checked} specialised variant(s) audited, {failures} failure(s).")
     return failures
 

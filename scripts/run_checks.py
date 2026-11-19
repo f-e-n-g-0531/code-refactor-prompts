@@ -50,7 +50,11 @@ def main() -> int:
 
     for name, command in steps:
         print(f"==> {name}", flush=True)
-        result = subprocess.run(command, cwd=ROOT)
+        try:
+            result = subprocess.run(command, cwd=ROOT)
+        except OSError as exc:
+            print(f"FAILED: {name}: could not start command: {exc}", file=sys.stderr)
+            return 1
         if result.returncode != 0:
             print(f"FAILED: {name}", file=sys.stderr)
             return 1

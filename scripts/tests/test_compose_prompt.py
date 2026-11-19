@@ -93,6 +93,32 @@ class ComposeTest(unittest.TestCase):
             self.assertIn("提取子方法", prompt)
             self.assertTrue(checker.check(prompt, explicit_language="go")["pass"])
 
+    def test_out_never_overwrites_input_source(self):
+        with tempfile.TemporaryDirectory() as raw:
+            source = Path(raw) / "source.py"
+            original = b"print(42)\n"
+            source.write_bytes(original)
+            result = run_compose("--code", str(source), "--out", str(source))
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("input source file", result.stderr)
+            self.assertEqual(source.read_bytes(), original)
+
+    def test_out_rejects_a_hard_link_to_input_source(self):
+        with tempfile.TemporaryDirectory() as raw:
+            source = Path(raw) / "source.py"
+            output = Path(raw) / "output.txt"
+            original = b"print(42)\n"
+            source.write_bytes(original)
+            try:
+                os.link(source, output)
+            except OSError as exc:
+                self.skipTest(f"hard links unavailable: {exc}")
+            result = run_compose("--code", str(source), "--out", str(output))
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("input source file", result.stderr)
+            self.assertEqual(source.read_bytes(), original)
+            self.assertEqual(output.read_bytes(), original)
+
     def test_stdin_code(self):
         result = run_compose(
             "--code", "-", "--code-lang", "python", input_text="def total(items):\n    return 0\n"
@@ -109,6 +135,20 @@ class ComposeTest(unittest.TestCase):
                 self.assertIn(code.rstrip(), result.stdout)
                 self.assertTrue(checker.check(result.stdout, strict=True)["pass"], checker.check(result.stdout))
 
+    def test_embedded_source_keeps_trailing_spaces_and_blank_lines(self):
+        for language in ("zh", "en"):
+            for code in ("print(42)  ", "print(42)  \n\n", "print(42)\n   \n"):
+                with self.subTest(language=language, code=code):
+                    result = run_compose("--code", "-", "--code-lang", "python",
+                                         "--output-lang", language, input_text=code)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    blocks = list(checker.fenced_blocks(result.stdout))
+                    self.assertEqual(len(blocks), 1)
+                    _, _, start, end, _, closed = blocks[0]
+                    self.assertTrue(closed)
+                    expected = code if code.endswith("\n") else code + "\n"
+                    self.assertEqual(result.stdout[start:end], expected)
+
     def test_source_test_tool_names_cannot_hide_wrong_acceptance(self):
         for code in ('x = "pytest"\n', "# pytest\nx = 0\n"):
             for output_lang in ("zh", "en"):
@@ -117,10 +157,34 @@ class ComposeTest(unittest.TestCase):
                     self.assertEqual(result.returncode, 1, result.stderr)
                     self.assertEqual(result.stdout, "")
 
+    def test_unknown_command_emits_warning_without_blocking_custom_runners(self):
+        result = run_compose("--code", str(SAMPLE_PY), "--test-command", "./project-tests")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("./project-tests", result.stdout)
+        self.assertIn("No runnable test command declared", result.stderr)
+
+    def test_blank_explicit_test_command_is_usage_error(self):
+        with tempfile.TemporaryDirectory() as raw:
+            target = Path(raw) / "prompt.txt"
+            result = run_compose("--code", str(SAMPLE_PY), "--test-command", "  ", "--out", str(target))
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("--test-command", result.stderr)
+            self.assertFalse(target.exists())
+
     def test_mismatched_test_command_is_refused(self):
         result = run_compose("--code", str(SAMPLE_GO), "--test-command", "pytest")
         self.assertEqual(result.returncode, 1)
         self.assertIn("self-check", result.stderr)
+
+    def test_custom_constraints_continue_numbering_in_both_languages(self):
+        for language in ("zh", "en"):
+            with self.subTest(language=language):
+                result = run_compose("--code", str(SAMPLE_PY), "--output-lang", language,
+                                     "--constraint", "first custom constraint",
+                                     "--constraint", "second custom constraint")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("5. first custom constraint", result.stdout)
+                self.assertIn("6. second custom constraint", result.stdout)
 
     def test_rules_and_cases_produce_tier_c_prompt(self):
         result = run_compose(

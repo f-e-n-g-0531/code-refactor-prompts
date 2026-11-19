@@ -4,7 +4,10 @@ Run with:  python3 -m unittest discover -s scripts/tests -p "test_*.py" -v
 """
 from __future__ import annotations
 
+from contextlib import redirect_stderr
+from http.client import IncompleteRead
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -12,6 +15,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "check_sources.py"
@@ -35,6 +39,51 @@ def write_temp(text: str) -> Path:
     handle.write(text)
     handle.close()
     return Path(handle.name)
+
+
+class OnlineCheckTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location("check_sources_online_test", SCRIPT)
+        cls.checker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.checker)
+
+    def test_http_status_does_not_require_reading_response_body(self):
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status = 200
+        response.read.side_effect = IncompleteRead(b"partial")
+        with patch.object(self.checker.urllib.request, "urlopen", return_value=response), patch.object(self.checker, "curl_status") as fallback:
+            self.assertEqual(self.checker.check_online("https://example.com", 1), ("pass", "HTTP 200"))
+        response.read.assert_not_called()
+        response.__exit__.assert_called_once()
+        fallback.assert_not_called()
+
+    def test_transport_errors_retry_then_classify_curl_response(self):
+        error = self.checker.urllib.error.URLError("offline")
+        with patch.object(self.checker.urllib.request, "urlopen", side_effect=error) as request, patch.object(
+            self.checker.time, "sleep",
+        ) as sleep, patch.object(self.checker, "curl_status", return_value=429) as fallback:
+            status, detail = self.checker.check_online("https://example.com", 2)
+        self.assertEqual(status, "warn")
+        self.assertIn("HTTP 429", detail)
+        self.assertIn("curl fallback", detail)
+        self.assertEqual(request.call_count, 2)
+        sleep.assert_called_once_with(1.0)
+        fallback.assert_called_once_with("https://example.com", 2)
+
+    def test_http_errors_close_response_without_retry(self):
+        body = io.BytesIO(b"blocked")
+        error = self.checker.urllib.error.HTTPError("https://example.com", 403, "blocked", {}, body)
+        with patch.object(self.checker.urllib.request, "urlopen", side_effect=error) as request, patch.object(
+            self.checker, "curl_status",
+        ) as fallback:
+            status, detail = self.checker.check_online("https://example.com", 2)
+        self.assertEqual(status, "warn")
+        self.assertIn("HTTP 403", detail)
+        self.assertTrue(body.closed)
+        request.assert_called_once()
+        fallback.assert_not_called()
 
 
 class SourceCheckTest(unittest.TestCase):
@@ -73,6 +122,17 @@ class SourceCheckTest(unittest.TestCase):
                 "https://example.com/f(x)",
                 "https://example.com/plain",
             })
+        finally:
+            path.unlink()
+
+    def test_ipv6_and_angle_delimited_urls_are_preserved(self):
+        expected = ["https://[2001:db8::1]:8443/a", "https://example.com/query?",
+                    "https://example.com/releases/v1.0."]
+        path = write_temp(f"[IPv6]({expected[0]}) <{expected[1]}> [version](<{expected[2]}>)\n")
+        try:
+            result = run(str(path), "--json")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual([entry["url"] for entry in json.loads(result.stdout)["urls"]], expected)
         finally:
             path.unlink()
 
@@ -140,6 +200,23 @@ class SourceCheckTest(unittest.TestCase):
         result = run(str(ROOT / "does-not-exist.md"))
         self.assertEqual(result.returncode, 2)
         self.assertIn("file not found", result.stderr)
+
+    def test_input_io_failures_return_usage_error_before_online_requests(self):
+        spec = importlib.util.spec_from_file_location("check_sources_io_test", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        path = write_temp("https://example.com/path\n")
+        try:
+            for operation in ("is_file", "read_text"):
+                with self.subTest(operation=operation), patch.object(sys, "argv", [str(SCRIPT), str(path), "--online"]), patch.object(
+                    Path, operation, side_effect=PermissionError("access denied"),
+                ), patch.object(module, "check_online") as online, redirect_stderr(io.StringIO()) as stderr:
+                    self.assertEqual(module.main(), 2)
+                    self.assertIn(str(path), stderr.getvalue())
+                    self.assertIn("access denied", stderr.getvalue())
+                    online.assert_not_called()
+        finally:
+            path.unlink()
 
     def test_invalid_timeout_is_usage_error(self):
         result = run("--timeout", "0")

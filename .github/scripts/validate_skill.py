@@ -7,9 +7,13 @@ Exits non-zero and prints a readable problem list on failure.
 """
 from __future__ import annotations
 
+import ast
+import importlib.util
+import os
 import re
 import sys
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 SKILL_NAME = "code-refactor-prompts"
@@ -52,6 +56,9 @@ REQUIRED_FILES = [
     "scripts/tests/test_run_checks.py",
     "scripts/tests/test_verify_examples.py",
     "scripts/tests/test_validate_skill.py",
+    "scripts/tests/test_audit_templates.py",
+    "scripts/tests/test_package_skill.py",
+    "scripts/tests/test_release_notes.py",
     "scripts/fixtures/good-prompt.txt",
     "scripts/fixtures/good-go-prompt.txt",
     "scripts/fixtures/good-en-prompt.txt",
@@ -61,6 +68,7 @@ REQUIRED_FILES = [
     "scripts/fixtures/bad-en-prompt.txt",
     "scripts/fixtures/weak-prompt.txt",
     ".github/scripts/verify_examples.py",
+    ".github/scripts/verify_precommit.py",
     ".github/scripts/audit_templates.py",
     ".github/scripts/validate_skill.py",
     ".github/scripts/release_notes.py",
@@ -124,14 +132,20 @@ def check_frontmatter() -> str | None:
         errors.append("SKILL.md：description 缺失或过短（<40 字符），会影响技能触发")
     if license_id != "MIT":
         errors.append(f"SKILL.md：license 应为 MIT，实际 {license_id!r}")
-    if not re.search(r"^\s+author:\s*\S+", frontmatter, re.M):
+    blocks = re.findall(r"^metadata:[ \t]*\n((?:[ \t]+[^\n]*\n?)*)", frontmatter + "\n", re.M)
+    metadata = blocks[0] if len(blocks) == 1 else ""
+    if not re.search(r"^[ \t]+author:[ \t]*\S+", metadata, re.M):
         errors.append("SKILL.md：metadata.author 缺失")
 
-    version_match = re.search(r'^\s+version:\s*"?([0-9]+\.[0-9]+\.[0-9]+)"?\s*$', frontmatter, re.M)
-    if not version_match:
-        errors.append("SKILL.md：metadata.version 缺失或不是语义化版本（X.Y.Z）")
+    declarations = re.findall(r"^[ \t]+version:[ \t]*([^\n]*)", metadata, re.M)
+    if len(declarations) != 1:
+        errors.append("SKILL.md：metadata.version 必须且只能声明一次")
         return None
-    return version_match.group(1)
+    version = re.fullmatch(r'(?P<quote>"?)([0-9]+\.[0-9]+\.[0-9]+)(?P=quote)[ \t]*', declarations[0])
+    if not version:
+        errors.append("SKILL.md：metadata.version 不是语义化版本（X.Y.Z）")
+        return None
+    return version[2]
 
 
 def check_version(version: str | None) -> None:
@@ -165,15 +179,11 @@ def _check_claim(rel: str, pattern: str, expected: int, unit: str) -> None:
         errors.append(f"{rel} 声称 {claimed.group(1)} 个{unit}，实际 {expected} 个")
 
 
-def check_counts() -> None:
-    readme = read("README.md")
-    variants = len(re.findall(r"^##\s+\d+\.", read("references/specialized-prompts.md"), re.M))
-    sources = len(re.findall(r"^###\s+\d+\.", read("references/sources.md"), re.M))
-    executable = sum(
-        1
-        for path in (ROOT / "examples").glob("*.md")
-        if "<!-- verify:run" in path.read_text(encoding="utf-8")
-    )
+def check_counts(executable: int) -> None:
+    variants_text = strip_fenced_blocks(read("references/specialized-prompts.md"))
+    sources_text = strip_fenced_blocks(read("references/sources.md"))
+    variants = len(re.findall(r"^##[ \t]+\d+\.", variants_text, re.M))
+    sources = len(re.findall(r"^###[ \t]+\d+\.", sources_text, re.M))
     _check_claim("README.md", r"(\d+)\s*个专项变体", variants, "专项变体")
     _check_claim("README.md", r"出处与依据（(\d+) 条", sources, "出处")
     _check_claim("README.md", r"(\d+)\s*个可执行样例", executable, "可执行样例")
@@ -185,15 +195,21 @@ def check_counts() -> None:
 def count_test_methods() -> int:
     total = 0
     for path in sorted((ROOT / "scripts" / "tests").glob("test_*.py")):
-        total += len(
-            re.findall(r"^\s+(?:async\s+)?def test_", path.read_text(encoding="utf-8"), re.M)
-        )
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=path.relative_to(ROOT).as_posix())
+        total += sum(isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
+                     and method.name.startswith("test_")
+                     for node in tree.body if isinstance(node, ast.ClassDef)
+                     for method in node.body)
     return total
 
 
 def check_test_counts() -> None:
     """The test count advertised in the READMEs must match the actual test methods."""
-    actual = count_test_methods()
+    try:
+        actual = count_test_methods()
+    except (SyntaxError, OSError, UnicodeError) as exc:
+        errors.append(f"无法统计测试方法：{exc}")
+        return
     for rel, pattern in (
         ("README.md", r"以\s*(\d+)\s*个用例"),
         ("README.en.md", r"with\s+(\d+)\s+tests"),
@@ -211,13 +227,14 @@ def strip_fenced_blocks(text: str) -> str:
     fence_char = ""
     fence_length = 0
     for line in text.splitlines():
-        marker = re.match(r"^\s*(`{3,}|~{3,})", line)
+        marker = re.match(r"^[ \t]{0,3}(`{3,}|~{3,})(.*)$", line)
         if fence_char:
             lines.append("")
-            if marker and marker.group(1)[0] == fence_char and len(marker.group(1)) >= fence_length:
+            if (marker and marker[1][0] == fence_char
+                    and len(marker[1]) >= fence_length and not marker[2].strip(" \t")):
                 fence_char = ""
                 fence_length = 0
-        elif marker:
+        elif marker and not (marker[1][0] == "`" and "`" in marker[2]):
             fence_char = marker.group(1)[0]
             fence_length = len(marker.group(1))
             lines.append("")
@@ -281,20 +298,31 @@ def check_version_refs(version: str | None) -> None:
     # [tool.*] table) cannot satisfy the check. Must stay in sync with
     # release_notes.validate_tag().
     section = re.search(r"^\[project\][ \t]*\n(.*?)(?=^\[|\Z)", pyproject, re.M | re.S)
-    declared = re.search(r'^version\s*=\s*"([^"]+)"', section.group(1), re.M) if section else None
+    declarations = re.findall(r'^[ \t]*(?:version|"version"|\x27version\x27)[ \t]*=[ \t]*([^\n]*)',
+                              section[1], re.M) if section else []
+    if len(declarations) > 1:
+        errors.append("pyproject.toml：[project] 的 version 重复声明")
+        return
+    declared = re.fullmatch(r'''("|')([0-9]+\.[0-9]+\.[0-9]+)\1[ \t]*(?:\#.*)?''', declarations[0]) if declarations else None
     if not declared:
-        errors.append("pyproject.toml：缺少 version（应与 SKILL.md 的 metadata.version 一致）")
-    elif declared.group(1) != version:
+        errors.append("pyproject.toml：缺少有效 version（应与 SKILL.md 的 metadata.version 一致）")
+    elif declared[2] != version:
         errors.append(
-            f"pyproject.toml：version {declared.group(1)} 与 SKILL.md 的 metadata.version {version} 不一致"
+            f"pyproject.toml：version {declared[2]} 与 SKILL.md 的 metadata.version {version} 不一致"
         )
 
 
+NON_PROJECT_DIRS = {".git", ".github", ".venv", "__pycache__", "build", "dist", "node_modules"}
+
+
 def iter_markdown():
-    for path in sorted(ROOT.rglob("*.md")):
-        if ".git" in path.parts or ".github" in path.parts:
-            continue
-        yield path
+    documents = []
+    for directory, dirs, files in os.walk(ROOT):
+        # Prune generated trees before walking them (also works in unpacked distributions).
+        dirs[:] = [name for name in dirs if name not in NON_PROJECT_DIRS and not name.endswith(".egg-info")]
+        documents.extend(Path(directory) / name for name in files
+                         if name.endswith(".md") and name != "release-notes.md")
+    return iter(sorted(documents))
 
 
 def check_copy() -> None:
@@ -307,21 +335,38 @@ def check_copy() -> None:
                 errors.append(f"{rel}:{line} 含禁止的过程性/占位文案：{hit.group(0)!r}")
 
 
+INLINE_LINK = re.compile(
+    r"\[[^\]\n]*\]\([ \t]*(?:<(?P<angle>[^<>\n]+)>|(?P<bare>(?:[^\s<>()]|\([^\s<>()]*\))+))"
+    r"(?:[ \t]+(?:\"[^\"\n]*\"|'[^'\n]*'|\([^()\n]*\)))?[ \t]*\)"
+)
+
+
 def check_links() -> None:
     for path in iter_markdown():
-        text = path.read_text(encoding="utf-8")
+        text = strip_fenced_blocks(path.read_text(encoding="utf-8"))
         rel = path.relative_to(ROOT).as_posix()
-        for hit in re.finditer(r"\[[^\]]*\]\(([^)]+)\)", text):
-            target = hit.group(1).strip()
-            if re.match(r"^(https?:|mailto:|#)", target) or target.startswith("<"):
+        for hit in INLINE_LINK.finditer(text):
+            target = hit["angle"] or hit["bare"]
+            try:
+                address = urlsplit(target)
+                if address.scheme or address.netloc or not address.path:
+                    continue
+                local = unquote(address.path, errors="strict")
+                exists = (path.parent / local).exists()
+            except (OSError, ValueError) as exc:
+                errors.append(f"{rel}: 无法检查链接 {target!r}：{exc}")
                 continue
-            local = target.split("#", 1)[0]
-            if not (path.parent / local).resolve().exists():
+            if not exists:
                 errors.append(f"{rel}: 相对链接指向不存在的文件：{target}")
 
 
-def check_examples() -> None:
-    """Samples must be listed in both READMEs; executable ones must declare markers."""
+def check_examples() -> int:
+    """Return the executable count using the same parser as the example runner."""
+    spec = importlib.util.spec_from_file_location("verify_examples_for_validation", ROOT / ".github/scripts/verify_examples.py")
+    assert spec is not None and spec.loader is not None
+    verifier = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(verifier)
+    executable = 0
     readme = read("README.md")
     readme_en = read("README.en.md")
     examples = sorted((ROOT / "examples").glob("*.md"))
@@ -329,16 +374,16 @@ def check_examples() -> None:
         errors.append("examples/ 下没有任何样例")
     for path in examples:
         name = path.name
-        text = path.read_text(encoding="utf-8")
         for document, label in ((readme, "README.md"), (readme_en, "README.en.md")):
             if name not in document:
                 errors.append(f"{label}：未列出样例 {name}")
-        has_run = "<!-- verify:run" in text
-        marked = len(re.findall(r"<!--\s*verify:file=", text))
-        if has_run and marked == 0:
-            errors.append(f"examples/{name}：声明了 verify:run 但没有 verify:file 代码块")
-        if not has_run and marked > 0:
-            errors.append(f"examples/{name}：有 verify:file 代码块但没有 verify:run 命令")
+        try:
+            _, commands = verifier.parse_example(path)
+        except verifier.ExampleError as exc:
+            errors.append(f"examples/{name}：{exc}")
+        else:
+            executable += bool(commands)
+    return executable
 
 
 def check_ci_wiring() -> None:
@@ -358,8 +403,8 @@ def check_ci_wiring() -> None:
         errors.append("ci.yml：未运行工具链回归测试（scripts/tests）")
     if "Test the packaged pre-commit console script" not in ci:
         errors.append("ci.yml：缺少「Test the packaged pre-commit console script」步骤")
-    if "pre-commit try-repo" not in ci:
-        errors.append("ci.yml：未做 pre-commit 端到端测试（try-repo）")
+    if "python3 .github/scripts/verify_precommit.py" not in ci:
+        errors.append("ci.yml：未接入统一的 pre-commit 端到端测试入口")
     if "check_sources.py" not in ci:
         errors.append("ci.yml：未运行离线出处链接检查（check_sources.py）")
     if "run_checks.py --list" not in ci:
@@ -378,8 +423,8 @@ def check_ci_wiring() -> None:
     if "--format github" not in ci:
         errors.append("ci.yml：未自测 GitHub 注解输出（--format github）")
     release = read(".github/workflows/release.yml")
-    if "pre-commit try-repo" not in release:
-        errors.append("release.yml：未做 pre-commit 端到端测试（try-repo）")
+    if "python3 .github/scripts/verify_precommit.py" not in release:
+        errors.append("release.yml：未接入统一的 pre-commit 端到端测试入口")
     if 'release_notes.py "$TAG"' not in release:
         errors.append("release.yml：缺少发布标签与当前版本校验")
     for fixture in (
@@ -474,6 +519,7 @@ def check_link_workflow() -> None:
 
 
 def main() -> int:
+    errors.clear()
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
@@ -485,8 +531,7 @@ def main() -> int:
     check_version(version)
     check_version_refs(version)
     check_references_wired()
-    check_counts()
-    check_examples()
+    check_counts(check_examples())
     check_test_counts()
     check_markdown_structure()
     check_fix_wording()

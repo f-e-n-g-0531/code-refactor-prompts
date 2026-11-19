@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -55,6 +55,9 @@ jobs:
         run: python3 .github/scripts/audit_templates.py
 
       - name: Test the prompt tooling
+        env:
+          # A dedicated --verify step below runs both extracted gates.
+          SKIP_NESTED_PACKAGE_VERIFY: "1"
         run: python3 -m unittest discover -s scripts/tests -p "test_*.py" -v
 
       - name: Set up Node.js for the TypeScript example
@@ -72,20 +75,7 @@ jobs:
         run: python3 .github/scripts/verify_examples.py --require-all
 
       - name: Test the pre-commit hook end to end
-        run: |
-          set -euo pipefail
-          python3 -m venv /tmp/precommit-e2e-venv
-          /tmp/precommit-e2e-venv/bin/pip install --quiet --disable-pip-version-check pre-commit
-          mkdir -p .pre-commit-e2e
-          cp scripts/fixtures/good-prompt.txt .pre-commit-e2e/order.prompt.txt
-          cp scripts/fixtures/bad-prompt.txt .pre-commit-e2e/bad.prompt.txt
-          /tmp/precommit-e2e-venv/bin/pre-commit try-repo . --ref HEAD --files .pre-commit-e2e/order.prompt.txt
-          if /tmp/precommit-e2e-venv/bin/pre-commit try-repo . --ref HEAD --files .pre-commit-e2e/bad.prompt.txt; then
-            echo "::error::the pre-commit hook must reject a bad prompt"
-            exit 1
-          fi
-          rm -rf .pre-commit-e2e
-          echo "pre-commit hook end-to-end OK"
+        run: python3 .github/scripts/verify_precommit.py
 
       - name: Build and verify release artifacts
         env:
@@ -99,13 +89,15 @@ jobs:
         run: |
           set -euo pipefail
           TITLE="code-refactor-prompts ${TAG}"
+          assets=(
+            "dist/code-refactor-prompts-${TAG}.zip"
+            "dist/code-refactor-prompts-${TAG}.tar.gz"
+            "dist/SHA256SUMS.txt"
+          )
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release edit "$TAG" --title "$TITLE" --notes-file .github/release-notes.md
-            gh release upload "$TAG" dist/* --clobber
+            gh release upload "$TAG" "${assets[@]}" --clobber
           else
-            gh release create "$TAG" --title "$TITLE" --notes-file .github/release-notes.md \
-              "dist/code-refactor-prompts-${TAG}.zip" \
-              "dist/code-refactor-prompts-${TAG}.tar.gz" \
-              "dist/SHA256SUMS.txt"
+            gh release create "$TAG" --verify-tag --title "$TITLE" --notes-file .github/release-notes.md "${assets[@]}"
           fi
           gh release view "$TAG" --json tagName,url,assets --jq '"release: " + .tagName + " " + .url'

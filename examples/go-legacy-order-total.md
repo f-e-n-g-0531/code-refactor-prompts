@@ -2,10 +2,11 @@
 
 演示工作流 2 + 工作流 4：先用行为基线测试锁住当前行为（含整数截断这类隐式规则），再做结构化重构，最后用差分测试证明等价。流程见 references/workflows.md。
 
-本样例不是纸面代码：带 `<!-- verify:file=... -->` 标记的代码块会被 .github/scripts/verify_examples.py 还原成临时 Go 模块并实际执行 `go test ./...`，CI 里跑不过就红。
+本样例不是纸面代码：带 `<!-- verify:file=... -->` 标记的代码块会被 .github/scripts/verify_examples.py 还原成临时 Go 模块并实际编译、执行 Go 测试，CI 里跑不过就红。
 
 <!-- verify:run
-go test ./...
+go test -c -o order-example.test.exe .
+python -c "import os, subprocess; raise SystemExit(subprocess.call([os.path.abspath('order-example.test.exe')]))"
 -->
 
 ## 1. 遗留代码（无测试、魔数遍地）
@@ -129,8 +130,8 @@ func TestTotalBaseline(t *testing.T) {
 package orders
 
 const (
-	bookDiscountPercent        = 10
-	electronicsDiscountPercent = 5
+	bookDiscountDivisor        = 10
+	electronicsDiscountDivisor = 20
 	orderDiscountThreshold     = 10000
 	orderDiscountDivisor       = 50
 	usTaxPercent               = 8
@@ -147,7 +148,7 @@ func TotalRefactored(o *Order) int {
 		if it.Qty <= 0 {
 			continue
 		}
-		total += applyDiscount(it.Price*it.Qty, categoryDiscountPercent(it.Category))
+		total += applyCategoryDiscount(it.Price*it.Qty, it.Category)
 	}
 	if total > orderDiscountThreshold {
 		total -= total / orderDiscountDivisor
@@ -159,19 +160,15 @@ func TotalRefactored(o *Order) int {
 	return total
 }
 
-func categoryDiscountPercent(category string) int {
+func applyCategoryDiscount(amount int, category string) int {
 	switch category {
 	case "book":
-		return bookDiscountPercent
+		return amount - amount/bookDiscountDivisor
 	case "electronics":
-		return electronicsDiscountPercent
+		return amount - amount/electronicsDiscountDivisor
 	default:
-		return 0
+		return amount
 	}
-}
-
-func applyDiscount(amount, percent int) int {
-	return amount - amount*percent/100
 }
 
 func taxFor(total int, region string) int {
@@ -186,7 +183,7 @@ func taxFor(total int, region string) int {
 }
 ```
 
-注意 applyDiscount 用 `amount*percent/100` 复现原来的 `amount - amount/10`：对整数而言 `10*s/100 == s/10`，截断点没有变化。
+分类折扣保留遗留实现的「先除后减」：整数除法的截断点不变，也不引入先乘百分比可能造成的溢出。
 
 ## 5. 第三步：差分测试再兜一层
 
@@ -199,6 +196,7 @@ package orders
 import "testing"
 
 func TestRefactoredMatchesLegacy(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
 	orders := []*Order{
 		{},
 		{Items: []Item{{Qty: 0, Price: 1000}, {Qty: -2, Price: 500}}},
@@ -207,6 +205,8 @@ func TestRefactoredMatchesLegacy(t *testing.T) {
 		{Items: []Item{{Qty: 7, Price: 333, Category: "book"}, {Qty: 2, Price: 1999, Category: "electronics"}}, Region: "EU", VIP: true},
 		{Items: []Item{{Qty: 1, Price: 10001}}, Region: "US"},
 		{Items: []Item{{Qty: 5, Price: 2001, Category: "electronics"}}, Region: "US", VIP: true},
+		{Items: []Item{{Qty: 1, Price: maxInt, Category: "book"}}},
+		{Items: []Item{{Qty: 1, Price: -maxInt - 1, Category: "electronics"}}},
 	}
 	for i, o := range orders {
 		if legacy, refactored := Total(o), TotalRefactored(o); legacy != refactored {
@@ -220,7 +220,7 @@ func TestRefactoredMatchesLegacy(t *testing.T) {
 
 ## 6. 可执行验证
 
-四个代码块分别标注了最终文件名（`orders.go`、`orders_test.go`、`refactored.go`、`differential_test.go`）。CI 用 `python3 .github/scripts/verify_examples.py --require-all` 把它们写入临时模块（缺省 `go.mod` 自动生成）并执行 `go test ./...`；本地可只跑单个样例：`--only go-legacy-order-total`。样例跑不过，CI 直接失败——「实现并验证」不是文案承诺，而是流水线约束。
+四个代码块分别标注了最终文件名（`orders.go`、`orders_test.go`、`refactored.go`、`differential_test.go`）。CI 用 `python3 .github/scripts/verify_examples.py --require-all` 把它们写入临时模块（缺省 `go.mod` 自动生成）并先用 `go test -c` 编译，再执行该模块的测试程序。这样测试退出和文件清理由执行器分开处理，避免 Windows 仍短暂持有测试程序时，Go 在回收临时文件阶段误报测试失败。本地可只跑单个样例：`--only go-legacy-order-total`。样例跑不过，CI 直接失败——「实现并验证」不是文案承诺，而是流水线约束。
 
 ## 7. 这个流程为什么可靠
 

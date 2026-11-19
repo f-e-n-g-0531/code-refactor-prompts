@@ -98,7 +98,7 @@ public class LegacyOrderCalculator {
 
 【验收标准】
 - 测试命令：javac Item.java Order.java LegacyOrderCalculator.java RefactoredOrderCalculator.java Verify.java && java Verify
-- 用例：空订单 → 0；BOOK 100×1 → 102.2；ELECTRONICS 200×2 → 451.88；category=null → 与原实现一样抛 NPE。
+- 用例：空订单 → 0；US 的 BOOK 100×1 → 102.2；EU 的 ELECTRONICS 200×2 → 451.88；category=null → 与原实现一样抛 NPE。
 ```
 
 ## 3. 行为基线 + 差分验证（无测试框架，用退出码断言）
@@ -219,7 +219,7 @@ public class Verify {
 ## 4. 为什么这一版可靠
 
 - **异常行为也是行为**：`category.equals(...)` 保留了 null 时的 NPE；把它改成 `"BOOK".equals(category)` 属于行为变更，应另开变更单。
-- **double 运算顺序不变**：分类折扣 → 求和 → 满减 → 税 → 运费，与旧实现逐句对应，`Double.compare` 直接比较结果位。
+- **double 运算顺序不变**：分类折扣 → 求和 → 满减 → 税 → 运费，与旧实现逐句对应，`Double.compare` 判定结果是否相等（区分正负零，所有 NaN 视为相等）。
 - **边界被锁死**：满减阈值严格 `> 100`、数量 ≤ 0 按 0 计、总价 ≤ 0 不加运费，全部由差分用例覆盖。
 - **无框架也能验收**：`javac && java Verify` 用退出码表达「等价」，CI 直接执行，不依赖 Maven / JUnit。
 

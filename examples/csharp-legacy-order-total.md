@@ -94,8 +94,8 @@ namespace Orders
 {
     public static class RefactoredPricing
     {
-        private const int BookDiscountPercent = 10;
-        private const int ElectronicsDiscountPercent = 5;
+        private const int BookDiscountDivisor = 10;
+        private const int ElectronicsDiscountDivisor = 20;
         private const int OrderDiscountThreshold = 10000;
         private const int OrderDiscountDivisor = 50;
         private const int UsTaxPercent = 8;
@@ -110,7 +110,7 @@ namespace Orders
             foreach (var item in order.Items)
             {
                 if (item.Qty <= 0) continue;
-                total += ApplyDiscount(item.Price * item.Qty, CategoryDiscountPercent(item.Category));
+                total += ApplyCategoryDiscount(item.Price * item.Qty, item.Category);
             }
             if (total > OrderDiscountThreshold) total -= total / OrderDiscountDivisor;
             total += TaxFor(total, order.Region);
@@ -118,17 +118,15 @@ namespace Orders
             return total;
         }
 
-        private static int CategoryDiscountPercent(string category)
+        private static int ApplyCategoryDiscount(int amount, string category)
         {
             switch (category)
             {
-                case "book": return BookDiscountPercent;
-                case "electronics": return ElectronicsDiscountPercent;
-                default: return 0;
+                case "book": return amount - amount / BookDiscountDivisor;
+                case "electronics": return amount - amount / ElectronicsDiscountDivisor;
+                default: return amount;
             }
         }
-
-        private static int ApplyDiscount(int amount, int percent) => amount - amount * percent / 100;
 
         private static int TaxFor(int total, string region)
         {
@@ -143,7 +141,7 @@ namespace Orders
 }
 ```
 
-注意 ApplyDiscount 用 `amount * percent / 100` 复现原来的 `amount - amount / 10`：对整数而言截断点没有变化。
+分类折扣保留遗留实现的「先除后减」，避免先乘百分比引入整数回绕。
 
 ## 5. 第三步：基线与差分断言写进可执行程序
 
@@ -209,6 +207,18 @@ internal static class Program
         var regions = new[] { "US", "EU", "" };
         var failures = 0;
 
+        foreach (var (category, price) in new[] { ("book", int.MaxValue), ("electronics", int.MinValue) })
+        {
+            var order = NewOrder(new[] { NewItem(1, price, category) });
+            var legacy = LegacyPricing.Total(order);
+            var refactored = RefactoredPricing.Total(order);
+            if (legacy != refactored)
+            {
+                Console.WriteLine($"differential boundary {category}: legacy={legacy} refactored={refactored}");
+                failures += 1;
+            }
+        }
+
         for (var index = 0; index < 200; index += 1)
         {
             var items = new Item[random.Next(5)];
@@ -233,7 +243,7 @@ internal static class Program
 }
 ```
 
-`CheckBaseline` 锁住当前行为（含枚举用例），`CheckEquivalence` 用固定种子生成 200 组订单对比遗留版与重构版输出；任何一条不等都会让程序返回退出码 1。
+`CheckBaseline` 锁住当前行为（含枚举用例），`CheckEquivalence` 对比两组整数边界订单及固定种子生成的 200 组订单；任何一条不等都会让程序返回退出码 1。
 
 ## 6. 可执行验证
 

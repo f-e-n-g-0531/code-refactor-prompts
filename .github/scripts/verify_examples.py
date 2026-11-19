@@ -70,7 +70,7 @@ class ExampleError(Exception):
     pass
 
 
-def remove_tree_with_retry(directory: Path, attempts: int = 6, delay: float = 0.5) -> None:
+def remove_tree_with_retry(directory: Path, attempts: int = 21, delay: float = 0.5) -> None:
     """Remove a temp tree, tolerating transient external holds on Windows.
 
     A toolchain or external scanner can briefly hold a freshly built file
@@ -90,16 +90,38 @@ def remove_tree_with_retry(directory: Path, attempts: int = 6, delay: float = 0.
             time.sleep(delay)
 
 
+def marker_offsets(text: str):
+    """Find standalone marker starts outside Markdown code fences."""
+    offset = 0
+    fence = ""
+    declaration = re.compile(r"[ \t]*<!--\s*verify:")
+    for line in text.splitlines(keepends=True):
+        marker = re.match(r"^[ \t]{0,3}(\x60{3,}|~{3,})([^\r\n]*)", line)
+        if fence:
+            if marker and marker[1].startswith(fence) and not marker[2].strip(" \t"):
+                fence = ""
+        elif marker and not (marker[1][0] == chr(96) and chr(96) in marker[2]):
+            fence = marker[1]
+        elif line.lstrip(" \t").startswith("<!--") and declaration.match(text, offset):
+            yield offset + line.index("<!--")
+        offset += len(line)
+
+
 def parse_example(path: Path) -> tuple[list[tuple[str, str]], list[str]]:
-    text = path.read_text(encoding="utf-8")
-    markers = list(re.finditer(r"(?m)^[ \t]*<!--\s*verify:", text))
-    if not markers:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ExampleError("example document is not valid UTF-8") from exc
+    except OSError as exc:
+        raise ExampleError(f"cannot read example document: {exc}") from exc
+    declared = set(marker_offsets(text))
+    if not declared:
         return [], []
-    runs = list(RUN_RE.finditer(text))
-    file_blocks = list(FILE_RE.finditer(text))
+    runs = [match for match in RUN_RE.finditer(text) if match.start() in declared]
+    file_blocks = [match for match in FILE_RE.finditer(text) if match.start() in declared]
     # A declared but malformed marker must never become an illustration-only skip.
     parsed_starts = {match.start() for match in runs + file_blocks}
-    if len(runs) != 1 or any(text.index("<!--", marker.start()) not in parsed_starts for marker in markers):
+    if len(runs) != 1 or declared != parsed_starts:
         raise ExampleError("expected one valid verify:run block and valid verify:file blocks")
     run_match = runs[0]
 
@@ -180,9 +202,11 @@ def scaffold(directory: Path, names: set[str]) -> None:
 
 def command_for_shell(command: str) -> str:
     """Run python commands with the current interpreter, whatever its name."""
-    parts = command.split()
-    if parts and parts[0] in {"python", "python3"}:
-        return " ".join(['"' + sys.executable + '"'] + parts[1:])
+    # Replace just the executable token; the shell must see the original
+    # arguments, including whitespace inside quoted strings.
+    match = re.match(r"^python3?(?=\s|$)", command)
+    if match:
+        return '"' + sys.executable + '"' + command[match.end():]
     return command
 
 
@@ -206,8 +230,11 @@ def verify_example(path: Path) -> tuple[str, list[str]]:
     if missing:
         return "missing-toolchain", missing
 
-    raw_tmp = tempfile.mkdtemp(prefix="example-")
-    tmp = Path(raw_tmp)
+    try:
+        tmp = Path(tempfile.mkdtemp(prefix="example-"))
+    except OSError as exc:
+        raise ExampleError(f"cannot create temporary directory: {exc}") from exc
+    failure = None
     try:
         for name, content in files:
             target = tmp / name
@@ -240,8 +267,24 @@ def verify_example(path: Path) -> tuple[str, list[str]]:
                 raise ExampleError(
                     f"command failed ({result.returncode}): {command}\n{output[-4000:]}"
                 )
+    except (ExampleError, subprocess.TimeoutExpired, OSError) as exc:
+        failure = exc
+        if isinstance(exc, subprocess.TimeoutExpired):
+            message = f"command timed out after {exc.timeout}s: {command}"
+        elif isinstance(exc, OSError):
+            message = f"cannot prepare or execute example: {exc}"
+        else:
+            message = str(exc)
     finally:
-        remove_tree_with_retry(Path(raw_tmp))
+        try:
+            remove_tree_with_retry(tmp)
+        except OSError as exc:
+            cleanup = f"cannot clean up temporary directory {tmp}: {exc}"
+            if failure is None:
+                raise ExampleError(cleanup) from exc
+            message = message.rstrip() + "\n  " + cleanup
+    if failure is not None:
+        raise ExampleError(message) from failure
     return "passed", commands
 
 

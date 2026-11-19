@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import hashlib
 import io
+import shutil
 import stat
 import tarfile
 import warnings
@@ -40,14 +41,19 @@ def cleanup_retrying(directory: tempfile.TemporaryDirectory, attempts: int = 6, 
     """
     for attempt in range(attempts):
         try:
-            directory.cleanup()
-            return
+            # On Python 3.9, TemporaryDirectory.cleanup() can transform a
+            # locked file into NotADirectoryError and detach its finalizer.
+            shutil.rmtree(directory.name)
         except FileNotFoundError:
-            return  # already removed
+            if Path(directory.name).exists():
+                raise
         except PermissionError:
             if attempt == attempts - 1:
                 raise
             time.sleep(delay)
+            continue
+        directory.cleanup()  # detach the finalizer after successful removal
+        return
 
 
 class PackageSkillTest(unittest.TestCase):
@@ -72,7 +78,24 @@ class PackageSkillTest(unittest.TestCase):
         self.assertEqual(run.call_count, 2)
         self.assertTrue(all(call.kwargs["check"] for call in run.call_args_list))
 
-    @unittest.skipIf(os.environ.get("PACKAGE_GATE_CHILD") == "1", "avoid recursively packaging the package gate")
+    def test_repeated_builds_are_byte_identical(self):
+        with patch.object(time, "time", return_value=1_000_000_000):
+            first = package.build(ROOT, self.output / "first", "repro")
+        with patch.object(time, "time", return_value=1_700_000_000):
+            second = package.build(ROOT, self.output / "second", "repro")
+        for left, right in zip(first, second):
+            self.assertEqual(left.read_bytes(), right.read_bytes(), left.name)
+        self.assertEqual((first[0].parent / "SHA256SUMS.txt").read_bytes(),
+                         (second[0].parent / "SHA256SUMS.txt").read_bytes())
+        with zipfile.ZipFile(first[0]) as archive:
+            self.assertTrue(all(member.date_time == (1980, 1, 1, 0, 0, 0)
+                                for member in archive.infolist()))
+        self.assertEqual(first[1].read_bytes()[4:8], bytes(4))  # gzip mtime
+
+    @unittest.skipIf(
+        any(os.environ.get(flag) == "1" for flag in ("PACKAGE_GATE_CHILD", "SKIP_NESTED_PACKAGE_VERIFY")),
+        "both archives are verified by the parent or a dedicated workflow step",
+    )
     def test_real_extracted_archives_run_fast_gate(self):
         package.verify(package.build(ROOT, self.output, "integration"), ROOT)
 
@@ -120,12 +143,40 @@ class PackageSkillTest(unittest.TestCase):
             package.verify(archives, ROOT)
         run.assert_not_called()
 
+    def test_checksum_manifest_rejects_duplicate_conflicting_and_extra_entries(self):
+        archives = package.build(ROOT, self.output, "manifest")
+        manifest = self.output / "SHA256SUMS.txt"
+        original = manifest.read_text(encoding="utf-8")
+        first_line = original.splitlines()[0]
+        for line in (first_line, "0" * 64 + "  " + archives[0].name, "0" * 64 + "  extra.zip"):
+            with self.subTest(line=line):
+                manifest.write_text(original + line + "\n", encoding="utf-8")
+                with patch.object(package.subprocess, "run") as run, self.assertRaisesRegex(ValueError, "checksum"):
+                    package.verify(archives, ROOT)
+                run.assert_not_called()
+
+    def test_archive_hash_and_parser_use_the_same_snapshot(self):
+        archives = package.build(ROOT, self.output, "snapshot")
+        with patch.object(package.zipfile, "ZipFile", wraps=zipfile.ZipFile) as open_zip, patch.object(
+            package.tarfile, "open", wraps=tarfile.open,
+        ) as open_tar, patch.object(package.subprocess, "run"):
+            package.verify(archives, ROOT)
+        self.assertIsInstance(open_zip.call_args.args[0], io.BytesIO)
+        self.assertIsInstance(open_tar.call_args.kwargs["fileobj"], io.BytesIO)
+
     def test_second_archive_checksum_failure_prevents_first_gate(self):
         archives = package.build(ROOT, self.output, "checksum")
         checksum = self.output / "SHA256SUMS.txt"
         checksum.write_text(checksum.read_text(encoding="utf-8").splitlines()[0] + "\n", encoding="utf-8")
         with patch.object(package.subprocess, "run") as run, self.assertRaisesRegex(ValueError, "checksum mismatch"):
             package.verify(archives, ROOT)
+        run.assert_not_called()
+
+    def test_verification_requires_both_release_formats(self):
+        archives = package.build(ROOT, self.output, "formats")
+        self.refresh_checksums(archives[:1])
+        with patch.object(package.subprocess, "run") as run, self.assertRaisesRegex(ValueError, "require.*ZIP.*tar.gz"):
+            package.verify(archives[:1], ROOT)
         run.assert_not_called()
 
     def test_empty_archive_set_does_not_claim_success(self):
@@ -140,10 +191,14 @@ class PackageSkillTest(unittest.TestCase):
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
-        (root / ".github/scripts/audit_templates.py").unlink()
+        for rel in (".github/scripts/audit_templates.py", "scripts/tests/test_audit_templates.py",
+                    "scripts/tests/test_package_skill.py", "scripts/tests/test_release_notes.py"):
+            (root / rel).unlink()
         with patch.object(validator, "ROOT", root), patch.object(validator, "errors", []):
             validator.check_required_files()
-            self.assertTrue(any("audit_templates.py" in error for error in validator.errors))
+            self.assertEqual(len(validator.errors), 4)
+            for name in ("audit_templates.py", "test_audit_templates.py", "test_package_skill.py", "test_release_notes.py"):
+                self.assertTrue(any(error.endswith("/" + name) for error in validator.errors), name)
 
     def test_repository_still_requires_workflows(self):
         with patch.object(validator, "ROOT", Path(self.tmp.name)), patch.object(validator, "errors", []):

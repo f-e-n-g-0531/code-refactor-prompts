@@ -21,7 +21,7 @@ python3 scripts/run_checks.py --full   # 额外真实执行 examples/ 里的全�
 
 - `SKILL.md`：主技能（八段骨架、三档策略、默认模板），frontmatter 含版本。
 - `references/`：专项变体、分语言要点、工作流、检查清单、出处；变体必须有可验证的验收锚点。
-- `examples/`：实战样例；可执行样例用 `<!-- verify:run -->` 与 `<!-- verify:file=NAME -->` 标记，CI 会真实执行。
+- `examples/`：实战样例；可执行样例用多行 `verify:run` 执行块（见 [Go 样例](examples/go-legacy-order-total.md)）与 `<!-- verify:file=NAME -->` 标记，CI 会真实执行。
 - `scripts/`：检查器、生成器、出处巡检、一键门禁与回归测试。
 - `.github/`：CI、发布、每周链接巡检与校验脚本；发布包包含 `.github/scripts/` 以支持本地门禁，不包含工作流与 Dependabot 配置。
 
@@ -38,5 +38,7 @@ python3 scripts/run_checks.py --full   # 额外真实执行 examples/ 里的全�
 2. 在 `CHANGELOG.md` 增加对应版本段；README 声称的测试数必须等于 `scripts/tests/` 中实际的 `def test_` 数量。
 3. 提交并推送 `main`，然后打标签并推送：`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`。
 4. 标签推送会触发 Release workflow：校验、审计、测试、实跑样例、pre-commit 端到端、打包并创建 GitHub Release。
+
+复现发布包的 SHA-256 时，请使用相同输入、标签和 Python／压缩库版本。不同压缩库可能为相同的包内文件生成不同字节；校验时应使用该批产物附带的 `SHA256SUMS.txt`。
 
 发布流程与门禁细节见 [README.md](README.md) 的「CI 与发布」。

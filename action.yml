@@ -8,7 +8,7 @@ branding:
 
 inputs:
   files:
-    description: File or directory to check; directories are scanned recursively for *.prompt, *.prompt.md and *.prompt.txt.
+    description: One file or directory, or a one-path-per-line list. Directories are scanned recursively for *.prompt, *.prompt.md and *.prompt.txt.
     required: false
     default: "."
   include:
@@ -47,10 +47,37 @@ runs:
         if [ "${INPUT_CHANGED_ONLY}" = "true" ]; then
           base="${BASE_SHA:-}"
           case "$base" in
-            "" | 0000000000000000000000000000000000000000) base="HEAD^" ;;
+            "" | 0000000000000000000000000000000000000000)
+              if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then
+                echo "changed-only needs a full checkout when no base is available" >&2
+                exit 2
+              fi
+              if git rev-parse --verify --quiet HEAD^ >/dev/null; then
+                args+=(--changed HEAD^)
+              else
+                args+=(--changed-root)
+              fi
+              ;;
+            *) args+=(--changed "$base") ;;
           esac
-          python3 "${GITHUB_ACTION_PATH}/scripts/check_prompt.py" "${args[@]}" --changed "$base"
+          python3 "${GITHUB_ACTION_PATH}/scripts/check_prompt.py" "${args[@]}"
         else
-          # shellcheck disable=SC2086 -- multiple paths are intentional
-          python3 "${GITHUB_ACTION_PATH}/scripts/check_prompt.py" "${args[@]}" ${INPUT_FILES}
+          files=()
+          if [[ "$INPUT_FILES" == *$'\n'* ]]; then
+            while IFS= read -r file; do
+              [[ -z "$file" ]] || files+=("$file")
+            done <<< "$INPUT_FILES"
+          elif [[ -e "$INPUT_FILES" ]]; then
+            files+=("$INPUT_FILES")
+          else
+            # Preserve the legacy space-separated list when it is not a single path.
+            # Retain legacy pathname expansion as well as whitespace splitting.
+            # shellcheck disable=SC2206
+            files=($INPUT_FILES)
+          fi
+          if (( ${#files[@]} == 0 )); then
+            echo "no files provided" >&2
+            exit 2
+          fi
+          python3 "${GITHUB_ACTION_PATH}/scripts/check_prompt.py" "${args[@]}" -- "${files[@]}"
         fi

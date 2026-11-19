@@ -72,7 +72,7 @@ public class OrderCalculator {
 3. 遵循现有 Java 编码规范与命名风格。
 
 【重构目标】
-0. 先为现有行为生成「行为基线测试」，把下方 4 条用例锚成可运行断言；
+0. 先为现有行为生成「行为基线测试」，把下方 5 条用例锚成可运行断言；
 1. 提取子方法，降低嵌套深度（5 层 → 1 层）；
 2. 消除重复逻辑，分类折扣 / 税费 / 运费各司其职；
 3. 用具名常量替换魔法数字。
@@ -81,8 +81,9 @@ public class OrderCalculator {
 - 测试命令：mvn test（或 JUnit 单独跑 calculateTotal）
 - 用例：
   - 空订单 → 0；
-  - 单本图书 100 × 1 → 100 × 0.9 × 1.08 + 5 = 102.2（折后 90，不触发 > 100 的满减）；
-  - 电子产品 200 × 2 → 400 × 0.95 × 0.98 × 1.2 + 5 = 451.88；
+  - 美国（US），单本图书 100 × 1 → 100 × 0.9 × 1.08 + 5 = 102.2（折后 90，不触发 > 100 的满减）；
+  - 欧盟（EU），电子产品 200 × 2 → 400 × 0.95 × 0.98 × 1.2 + 5 = 451.88；
+  - 地区为 null，OTHER 商品单价为正无穷、数量为 0 → 0（不执行乘法）；
   - 商品分类为 null → 与原实现一致（抛 NullPointerException）；若业务希望改为不打折，属行为变更，另开变更单。
 
 【输出格式】
@@ -110,7 +111,8 @@ public class OrderCalculator {
         double total = 0;
         for (Item item : items) {
             if (item == null) continue;
-            double price = item.getPrice() * Math.max(item.getQuantity(), 0);
+            double price = item.getPrice();
+            price = item.getQuantity() > 0 ? price * item.getQuantity() : 0;
             total += applyCategoryDiscount(price, item.getCategory());
         }
         return total;
@@ -143,4 +145,4 @@ public class OrderCalculator {
 - 每个方法职责单一、可独立测试；嵌套从 5 层降到 1 层。
 - 计算顺序（小计 → 满减 → 税 → 运费）被显式化，语义一目了然。
 - `category.equals("BOOK")` 保留原实现在 category 为 null 时抛 NPE 的行为：行为等价包括异常行为，不能借重构顺手「修 bug」；确需改为不打折时，应单开行为变更单并补对应用例。
-- 验收标准里的 4 个用例（含异常行为）可机械核对行为等价，正是「能跑」与「可靠」的分水岭。
+- 验收标准里的 5 个用例（含异常行为）可机械核对行为等价，正是「能跑」与「可靠」的分水岭。
