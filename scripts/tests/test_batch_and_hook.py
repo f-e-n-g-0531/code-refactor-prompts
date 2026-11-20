@@ -152,7 +152,9 @@ class PreCommitHookTest(unittest.TestCase):
         spec.loader.exec_module(gate)
         for bad_exit in (1, 0, 3):
             with self.subTest(bad_exit=bad_exit), tempfile.TemporaryDirectory() as raw:
-                root = Path(raw)
+                # verify() resolves its root; match that so short (8.3) temp
+                # path spellings on Windows runners compare equal.
+                root = Path(raw).resolve()
                 fixtures = root / "scripts" / "fixtures"
                 fixtures.mkdir(parents=True)
                 for name, text in (("good", GOOD), ("bad", BAD)):
